@@ -44,9 +44,17 @@ pii_classes = [
         "pii_id": "company_name",
         "prompt": GENERATE_COMPANY_NAMES_SYSTEM_PROMPT,
     },
+    {
+        "class": "Signature",
+        "pii_id": "signature",
+        "prompt": None,
+    },
     # car plate number
     # VIN
 ]
+
+pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes)}
+id_to_pii = {i: pii["pii_id"] for i, pii in enumerate(pii_classes)}
 
 document_types = [
     "Invoice",
@@ -152,6 +160,20 @@ pii_entities_colors = {
     "iban": (1, 0.5, 0),  # Оранжевый
     "company_name": (0, 0.5, 0.5),  # Темно-зеленый
     "signature": (0.5, 0.5, 0.5),  # Серый
+}
+
+pii_entities_colors_names = {
+    "first_name": "Red",
+    "last_name": "Pink",
+    "middle_name": "Fuchsia",
+    "address": "Green",
+    "phone_number": "Blue",
+    "email_address": "Yellow",
+    "dates": "Purple",
+    "credit_card_number": "Turquoise",
+    "iban": "Orange",
+    "company_name": "Green",
+    "signature": "Grey",
 }
 
 

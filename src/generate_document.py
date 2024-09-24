@@ -76,6 +76,8 @@ class PIIGenerator:
     def generate_pii_entities(self, number_of_entities):
         pii_entities = {}
         for pii_entity in self.pii_classes:
+            if pii_entity["pii_id"] == "signature":
+                continue
             pii_entities[pii_entity["pii_id"]] = list(
                 set(
                     self.generate(pii_entity["prompt"], USER_PROMPT(number_of_entities))
@@ -209,10 +211,9 @@ class PIIGenerator:
     def extract_signature_bounding_boxes(document):
         try:
             page = document[0]
-            image = page.get_images(full=True)[0]
-            xref = image[0]
-            rect = page.get_image_info(xref)
-            bbox = rect[0]["bbox"]
+            image = page.get_image_info()[-1]
+            bbox = image["bbox"]
+
             return bbox
         except:
             return None
@@ -313,9 +314,9 @@ class PIIGenerator:
                 bounding_boxes.append(
                     ("signature", document_meta_info["signature"], signature_bbox)
                 )
-        missing_entities, not_embedded_entities = self.check_entities(
-            found_entities, random_pii_values, pdf
-        )
+        # missing_entities, not_embedded_entities = self.check_entities(
+        #     found_entities, random_pii_values, pdf
+        # )
         # if missing_entities or not_embedded_entities:
         #     print(f"Entities not found in file {file_name}")
         #     print(f"Missing entities: {missing_entities}")
@@ -352,6 +353,12 @@ class PIIGenerator:
         )
 
     def save_documents(self, path, json_format=True):
+        try:
+            with open(os.path.join(self.output_folder, path), "r") as f:
+                existing_documents = json.load(f)
+                self.documents.extend(existing_documents)
+        except FileNotFoundError:
+            print("No existing documents found")
         if json_format:
             with open(
                 os.path.join(self.output_folder, path), "w", encoding="utf-8"
