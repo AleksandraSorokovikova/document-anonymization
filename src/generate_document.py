@@ -224,7 +224,7 @@ class PIIGenerator:
                 else:
                     entity_boxes = []
 
-        return entity_bounding_boxes, list(set(found_entities))
+        return list(set(entity_bounding_boxes)), list(set(found_entities))
 
     @staticmethod
     def extract_signature_bounding_boxes(document):

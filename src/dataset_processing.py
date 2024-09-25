@@ -71,6 +71,7 @@ def create_yolov5_dataset_structure(
                 labels[pdf_name_without_ext]["entities"].append(
                     [class_index, box_center_x, box_center_y, box_width, box_height]
                 )
+            labels[pdf_name_without_ext]["entities"] = list(set(tuple(x) for x in labels[pdf_name_without_ext]["entities"]))
 
     train, test = train_test_split(list(labels.keys()), test_size=0.3, random_state=42)
     validation, test = train_test_split(test, test_size=0.5, random_state=42)
