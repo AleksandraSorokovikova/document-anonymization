@@ -49,6 +49,11 @@ pii_classes = [
         "pii_id": "signature",
         "prompt": None,
     },
+    {
+        "class": "Full Name",
+        "pii_id": "full_name",
+        "prompt": None,
+    }
     # car plate number
     # VIN
 ]
@@ -160,6 +165,7 @@ pii_entities_colors = {
     "iban": (1, 0.5, 0),  # Оранжевый
     "company_name": (0, 0.5, 0.5),  # Темно-зеленый
     "signature": (0.5, 0.5, 0.5),  # Серый
+    "full_name": (0.5, 0, 0.5),  # Темно-фиолетовый
 }
 
 pii_entities_colors_names = {

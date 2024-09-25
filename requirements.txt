@@ -11,3 +11,5 @@ python_Levenshtein==0.26.0
 matplotlib==3.9.2
 pybboxes==0.1.6
 scikit-learn==1.5.2
+ultralytics==8.2.100
+comet-ml==3.46.0

@@ -11,8 +11,8 @@ from sklearn.model_selection import train_test_split
 def create_yolov5_dataset_structure(
     original_pdf_folder,
     entities_json_folder,
-    output_folder,
-    root_folder="yolov5",
+    output_folder="dataset",
+    root_folder="yolo-detection",
     zoom=1.5,
 ):
     """
@@ -21,7 +21,13 @@ def create_yolov5_dataset_structure(
 
     custom_data_folder = os.path.join(root_folder, output_folder)
     os.makedirs(custom_data_folder, exist_ok=True)
-    all_images = []
+    os.makedirs(os.path.join(custom_data_folder, "images"), exist_ok=True)
+    os.makedirs(os.path.join(custom_data_folder, "labels"), exist_ok=True)
+    # create train, val and test folders
+    for folder in ["train", "val", "test"]:
+        os.makedirs(os.path.join(custom_data_folder, "images", folder), exist_ok=True)
+        os.makedirs(os.path.join(custom_data_folder, "labels", folder), exist_ok=True)
+    labels = {}
 
     for pdf_filename in os.listdir(original_pdf_folder):
         if pdf_filename.endswith(".pdf"):
@@ -41,46 +47,68 @@ def create_yolov5_dataset_structure(
 
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
-            img_filename = f"{pdf_name_without_ext}.png"
-            img_path = os.path.join(custom_data_folder, img_filename)
-            all_images.append(os.path.join(output_folder, img_filename))
-            pix.save(img_path)
+            labels[pdf_name_without_ext] = {
+                "image": pix,
+                "entities": [],
+            }
 
             with open(entity_json_path, "r") as f:
                 entities = json.load(f)
 
-            label_filename = f"{pdf_name_without_ext}.txt"
-            label_path = os.path.join(custom_data_folder, label_filename)
+            for entity in entities:
+                entity_type, entity_value, bbox = entity
 
-            with open(label_path, "w") as label_file:
-                for entity in entities:
-                    entity_type, entity_value, bbox = entity
+                class_index = pii_to_id[entity_type]
 
-                    class_index = pii_to_id[entity_type]
+                yolo_cor = pbx.convert_bbox(
+                    bbox,
+                    from_type="voc",
+                    to_type="yolo",
+                    image_size=(page_width, page_height),
+                )
+                box_center_x, box_center_y, box_width, box_height = yolo_cor
 
-                    yolo_cor = pbx.convert_bbox(
-                        bbox,
-                        from_type="voc",
-                        to_type="yolo",
-                        image_size=(page_width, page_height),
-                    )
-                    box_center_x, box_center_y, box_width, box_height = yolo_cor
+                labels[pdf_name_without_ext]["entities"].append(
+                    [class_index, box_center_x, box_center_y, box_width, box_height]
+                )
 
-                    label_file.write(
-                        f"{class_index} {box_center_x} {box_center_y} {box_width} {box_height}\n"
-                    )
-
-    train, test = train_test_split(all_images, test_size=0.4, random_state=42)
+    train, test = train_test_split(list(labels.keys()), test_size=0.3, random_state=42)
     validation, test = train_test_split(test, test_size=0.5, random_state=42)
-    with open(os.path.join(root_folder, "dataset", "custom_train.txt"), "w") as f:
-        for item in train:
-            f.write("%s\n" % item)
-    with open(os.path.join(root_folder, "dataset", "custom_validation.txt"), "w") as f:
-        for item in validation:
-            f.write("%s\n" % item)
-    with open(os.path.join(root_folder, "dataset", "custom_test.txt"), "w") as f:
-        for item in test:
-            f.write("%s\n" % item)
+
+    # write train, val and test labels
+    """
+    dataset/  # This is the 'path' in your custom.yaml
+    ├── images/
+    │   ├── train/
+    │   │   ├── image1.jpg
+    │   │   ├── image2.jpg
+    │   │   └── ...
+    │   └── val/
+    │       ├── image101.jpg
+    │       ├── image102.jpg
+    │       └── ...
+    └── labels/
+        ├── train/
+        │   ├── image1.txt
+        │   ├── image2.txt
+        │   └── ...
+        └── val/
+            ├── image101.txt
+            ├── image102.txt
+            └── ...
+    """
+    for split, pdfs in zip(["train", "val", "test"], [train, validation, test]):
+        for pdf_name in pdfs:
+            image_path = os.path.join(custom_data_folder, "images", split, f"{pdf_name}.png")
+            labels_path = os.path.join(custom_data_folder, "labels", split, f"{pdf_name}.txt")
+
+            labels_list = labels[pdf_name]["entities"]
+            image = labels[pdf_name]["image"]
+
+            image.save(image_path)
+            with open(labels_path, "w") as f:
+                for label in labels_list:
+                    f.write(" ".join(map(str, label)) + "\n")
 
     print("Dataset creation complete.")
 

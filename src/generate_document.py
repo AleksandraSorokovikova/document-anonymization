@@ -27,11 +27,11 @@ import os
 class PIIGenerator:
 
     def __init__(
-        self,
-        output_folder="output",
-        path_to_pii_values="pii_values.json",
-        number_of_entities=None,
-        generate_new=False,
+            self,
+            output_folder="output",
+            path_to_pii_values="pii_values.json",
+            number_of_entities=None,
+            generate_new=False,
     ):
         self.client = openai.Client()
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -57,7 +57,7 @@ class PIIGenerator:
         self.output_folder = output_folder
         self.documents = []
 
-    def generate(self, system_prompt, user_prompt, use_json=True, temp=0.9):
+    def generate(self, system_prompt, user_prompt, use_json=True, temp=0.5):
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -76,13 +76,18 @@ class PIIGenerator:
     def generate_pii_entities(self, number_of_entities):
         pii_entities = {}
         for pii_entity in self.pii_classes:
-            if pii_entity["pii_id"] == "signature":
+            if pii_entity["pii_id"] in ("signature", "full_name"):
                 continue
             pii_entities[pii_entity["pii_id"]] = list(
                 set(
                     self.generate(pii_entity["prompt"], USER_PROMPT(number_of_entities))
                 )
             )
+        full_names = [
+            f"{random.choice(pii_entities['first_name'])} {random.choice(pii_entities['middle_name']) + ' ' if random.random() <= 0.2 else ''}{random.choice(pii_entities['last_name'])}"
+            for _ in range(number_of_entities)
+        ]
+        pii_entities["full_name"] = full_names
         return pii_entities
 
     def generate_html_document(self):
@@ -91,13 +96,14 @@ class PIIGenerator:
         random_pii_entities = [
             entity["pii_id"]
             for entity in random.choices(self.pii_classes, k=k)
-            if entity["pii_id"] != "first_name" and entity["pii_id"] != "last_name"
+            if entity["pii_id"] not in ["signature", "first_name", "last_name"]
         ]
         random_pii_entities += [entity["pii_id"] for entity in self.pii_classes]
+        random_pii_entities += ["full_name"]
 
         random_pii_values = [
             (entity, random.choice(self.pii_values[entity]))
-            for entity in random_pii_entities
+            for entity in random_pii_entities if entity != "signature"
         ]
         random_font_family = random.choice(font_family)
         random_signature = random.choice(self.signatures_files_paths)
@@ -141,11 +147,24 @@ class PIIGenerator:
         return html_content, document_meta_info, random_pii_values
 
     @staticmethod
-    def extract_bounding_boxes(document, entities):
+    def define_full_name(entities):
+        first_name = [en[1] for en in entities if en[0] == "first_name"][0]
+        last_name = [en[1] for en in entities if en[0] == "last_name"][0]
+        middle_names = [en[1] for en in entities if en[0] == "middle_name"]
+        middle_name = middle_names[0] if middle_names else ""
+        full_name_1 = f"{first_name} {middle_name + ' ' if middle_name else ''}{last_name}"
+        full_name_2 = f"{first_name} {last_name}"
+        return full_name_1, full_name_2
+
+    def extract_bounding_boxes(self, document, entities):
         entity_bounding_boxes = []
         found_entities = []
         page = document[0]
         words = page.get_text("words")
+
+        full_name_1, full_name_2 = self.define_full_name(entities)
+        entities.append(["full_name", full_name_1])
+        entities.append(["full_name", full_name_2])
 
         for entity, value in entities:
             entity_boxes = []
@@ -154,9 +173,9 @@ class PIIGenerator:
 
             for i, word in enumerate(words):
                 if (
-                    fuzz.WRatio(word[4].lower(), entity_words[entity_index].lower())
-                    >= 95
-                    or word[4] == entity_words[entity_index]
+                        fuzz.WRatio(word[4].lower(), entity_words[entity_index].lower())
+                        >= 95
+                        or word[4] == entity_words[entity_index]
                 ):
                     entity_boxes.append(word)
                     entity_index += 1
@@ -283,10 +302,10 @@ class PIIGenerator:
                 break
 
         with open(
-            os.path.join(
-                self.output_folder, "html", file_name.replace(".pdf", ".html")
-            ),
-            "w",
+                os.path.join(
+                    self.output_folder, "html", file_name.replace(".pdf", ".html")
+                ),
+                "w",
         ) as f:
             f.write(html_content)
 
@@ -333,13 +352,13 @@ class PIIGenerator:
         )
         # save bounding_boxes pickle
         with open(
-            os.path.join(
-                self.output_folder,
-                "entities",
-                f"{file_name.replace('.pdf', '_bounding_boxes.json')}",
-            ),
-            "w",
-            encoding="utf-8",
+                os.path.join(
+                    self.output_folder,
+                    "entities",
+                    f"{file_name.replace('.pdf', '_bounding_boxes.json')}",
+                ),
+                "w",
+                encoding="utf-8",
         ) as f:
             json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
 
@@ -361,7 +380,7 @@ class PIIGenerator:
             print("No existing documents found")
         if json_format:
             with open(
-                os.path.join(self.output_folder, path), "w", encoding="utf-8"
+                    os.path.join(self.output_folder, path), "w", encoding="utf-8"
             ) as f:
                 json.dump(self.documents, f, indent=4, ensure_ascii=False)
         else:
