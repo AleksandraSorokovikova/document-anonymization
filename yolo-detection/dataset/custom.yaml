@@ -1,0 +1,8 @@
+path: /teamspace/studios/this_studio/document-anonymization/yolo-detection/dataset
+
+train: images/train
+val: images/val
+test: images/test
+
+nc: 12  # number of classes
+names: ['first_name', 'last_name', 'middle_name', 'address', 'phone_number', 'email_address', 'dates', 'credit_card_number', 'iban', 'company_name', 'signature', 'full_name']  # class names
