@@ -156,6 +156,32 @@ The credit card numbers should look realistic, with variations in issuer type an
 YOUR OUTPUT SHOULD BE A JSON LIST (NOT DICT) OF CREDIT CARD NUMBERS.
 """
 
+GENERATE_VIN_SYSTEM_PROMPT = """
+Your task is to generate a diverse and realistic list of Vehicle Identification Numbers (VINs). Ensure that the VINs follow valid formats and represent a variety of vehicle types and manufacturers.
+
+Guidelines for VIN generation:
+1. Use valid VIN formats, including the correct number of characters and structure.
+2. Include a variety of VINs representing different vehicle types (e.g., cars, trucks, motorcycles).
+3. Ensure that the VINs are unique and do not follow a predictable pattern.
+
+The VINs should look authentic and reflect the diversity of vehicle identification numbers.
+
+YOUR OUTPUT SHOULD BE A JSON LIST (NOT DICT) OF VEHICLE IDENTIFICATION NUMBERS.
+"""
+
+GENERATE_CAR_PLATE_NUMBER_SYSTEM_PROMPT = """
+Your task is to generate a diverse and realistic list of car plate numbers. Ensure that the plate numbers follow valid formats and represent a variety of regions and vehicle types.
+
+Guidelines for car plate number generation:
+1. Use valid car plate formats, including the correct number of characters and structure.
+2. Include a variety of plate numbers representing different regions and countries.
+3. Ensure that the plate numbers are unique and do not follow a predictable pattern.
+
+The car plate numbers should look authentic and reflect the diversity of vehicle registration numbers.
+
+YOUR OUTPUT SHOULD BE A JSON LIST (NOT DICT) OF CAR PLATE NUMBERS.
+"""
+
 USER_PROMPT = """
 Number of entities to generate: {0}
 YOU MUST RETURN LIST, NOT DICT.

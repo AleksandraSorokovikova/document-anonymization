@@ -17,7 +17,11 @@ pii_classes = [
         "pii_id": "middle_name",
         "prompt": GENERATE_MIDDLE_NAMES_SYSTEM_PROMPT,
     },
-    {"class": "Address", "pii_id": "address", "prompt": GENERATE_ADDRESS_SYSTEM_PROMPT},
+    {
+        "class": "Address",
+        "pii_id": "address",
+        "prompt": GENERATE_ADDRESS_SYSTEM_PROMPT
+    },
     {
         "class": "Phone Number",
         "pii_id": "phone_number",
@@ -38,7 +42,11 @@ pii_classes = [
         "pii_id": "credit_card_number",
         "prompt": GENERATE_CREDIT_CARD_NUMBER_SYSTEM_PROMPT,
     },
-    {"class": "IBAN", "pii_id": "iban", "prompt": GENERATE_IBAN_SYSTEM_PROMPT},
+    {
+        "class": "IBAN",
+        "pii_id": "iban",
+        "prompt": GENERATE_IBAN_SYSTEM_PROMPT
+    },
     {
         "class": "Company Name",
         "pii_id": "company_name",
@@ -53,9 +61,17 @@ pii_classes = [
         "class": "Full Name",
         "pii_id": "full_name",
         "prompt": None,
-    }
-    # car plate number
-    # VIN
+    },
+    {
+        "class": "VIN",
+        "pii_id": "vin",
+        "prompt": GENERATE_VIN_SYSTEM_PROMPT,
+    },
+    {
+        "class": "Car Plate",
+        "pii_id": "car_plate",
+        "prompt": GENERATE_CAR_PLATE_NUMBER_SYSTEM_PROMPT,
+    },
 ]
 
 pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes)}
@@ -166,6 +182,8 @@ pii_entities_colors = {
     "company_name": (0, 0.5, 0.5),  # Темно-зеленый
     "signature": (0.5, 0.5, 0.5),  # Серый
     "full_name": (0.5, 0, 0.5),  # Темно-фиолетовый
+    "vin": (0.5, 1, 0),  # Ярко-зеленый
+    "car_plate": (0, 0.5, 1),  # Светло-синий
 }
 
 pii_entities_colors_names = {
@@ -180,6 +198,8 @@ pii_entities_colors_names = {
     "iban": "Orange",
     "company_name": "Green",
     "signature": "Grey",
+    "full_name": "Dark Purple",
+    "vin": "Bright Green",
 }
 
 

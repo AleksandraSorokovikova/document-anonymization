@@ -22,6 +22,96 @@ from src.prompts import (
     USER_PROMPT,
 )
 import os
+from collections import defaultdict
+from tqdm.notebook import tqdm
+import random
+from datasets import load_dataset
+
+
+def generate_random_address(entities, n):
+    address = []
+    orders = [
+        ['street', 'city', 'zip_code'],
+        ['building_number', 'street', 'city', 'zip_code'],
+        ['zip_code', 'city', 'street'],
+        ['city', 'street', 'building_number', 'zip_code'],
+        ['street', 'zip_code', 'city'],
+        ['zip_code', 'street', 'city', 'building_number'],
+        ['city', 'zip_code', 'street'],
+        ['street', 'building_number', 'zip_code', 'city'],
+        ['street', 'building_number'],
+        ['building_number', 'street', 'city'],
+        ['zip_code', 'city'],
+        ['building_number', 'street', 'zip_code'],
+    ]
+
+    for _ in range(n):
+        order = random.choice(orders)
+        join_symbol = random.choice([", ", " "])
+        address_entities = [random.choice(entities[key]) for key in order]
+        addr = join_symbol.join(address_entities)
+        address.append(addr)
+    return address
+
+
+def generate_random_full_name(entities, n):
+    full_names = []
+    for _ in range(n):
+        first_name = random.choice(entities['first_name'])
+        last_name = random.choice(entities['last_name'])
+        if random.random() <= 0.2:
+            middle_name = random.choice(entities['middle_name'])
+            full_name = f"{first_name} {middle_name} {last_name}"
+        else:
+            full_name = f"{first_name} {last_name}"
+        full_names.append(full_name)
+    return full_names
+
+
+def load_new_entities(dataset_name="ai4privacy/pii-masking-200k", max_number_of_entities=1000):
+    entities = defaultdict(list)
+    dataset = load_dataset(dataset_name)
+
+    keys = {
+        'FIRSTNAME': 'first_name',
+        'LASTNAME': 'last_name',
+        'VEHICLEVIN': 'vin',
+        'VEHICLEVRM': 'car_plate',
+        'EMAIL': 'email_address',
+        'DATE': 'dates',
+        'MIDDLENAME': 'middle_name',
+        'CREDITCARDNUMBER': 'credit_card_number',
+        'PHONENUMBER': 'phone_number',
+        'IBAN': 'iban',
+        'COMPANYNAME': 'company_name',
+        'BUILDINGNUMBER': 'building_number',
+        'STREET': 'street',
+        'CITY': 'city',
+        'ZIPCODE': 'zip_code',
+    }
+    privacy_mask = dataset['train']['privacy_mask']
+    random.shuffle(privacy_mask)
+
+    for mask in tqdm(privacy_mask):
+        for entity in mask:
+            if entity['label'] in keys and len(entities[keys[entity['label']]]) < max_number_of_entities:
+                entities[keys[entity['label']]].append(entity['value'])
+
+    entities = dict(entities)
+    entities['email_address'] = [email.lower() for email in entities['email_address']]
+    entities['building_number'] = [str(b)[:3] for b in entities['building_number']]
+    address = generate_random_address(entities, max_number_of_entities)
+    names = generate_random_full_name(entities, max_number_of_entities)
+
+    entities['full_name'] = names
+    entities['address'] = address
+
+    del entities['city']
+    del entities['street']
+    del entities['zip_code']
+    del entities['building_number']
+
+    return entities
 
 
 class PIIGenerator:
@@ -35,6 +125,7 @@ class PIIGenerator:
     ):
         self.client = openai.Client()
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.path_to_pii_values = path_to_pii_values
         self.pii_classes = pii_classes
         self.pii_entities = [pii["class"] for pii in self.pii_classes]
         self.signatures_files_paths = [
@@ -74,37 +165,89 @@ class PIIGenerator:
         return message.replace("```html", "").replace("```", "")
 
     def generate_pii_entities(self, number_of_entities):
-        pii_entities = {}
+        pii_values = {}
         for pii_entity in self.pii_classes:
             if pii_entity["pii_id"] in ("signature", "full_name"):
                 continue
-            pii_entities[pii_entity["pii_id"]] = list(
+            pii_values[pii_entity["pii_id"]] = list(
                 set(
                     self.generate(pii_entity["prompt"], USER_PROMPT(number_of_entities))
                 )
             )
         full_names = [
-            f"{random.choice(pii_entities['first_name'])} {random.choice(pii_entities['middle_name']) + ' ' if random.random() <= 0.2 else ''}{random.choice(pii_entities['last_name'])}"
+            f"{random.choice(pii_values['first_name'])} {random.choice(pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''}{random.choice(pii_values['last_name'])}"
             for _ in range(number_of_entities)
         ]
-        pii_entities["full_name"] = full_names
-        return pii_entities
+        pii_values["full_name"] = list(set(full_names))
+        return pii_values
 
-    def generate_html_document(self):
-        k = random.randint(1, 3)
-        document_type = random.choice(document_types)
-        random_pii_entities = [
-            entity["pii_id"]
-            for entity in random.choices(self.pii_classes, k=k)
-            if entity["pii_id"] not in ["signature", "first_name", "last_name"]
+    def generate_full_names(self, number_of_entities):
+        full_names = [
+            f"{random.choice(self.pii_values['first_name'])} {random.choice(self.pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''}{random.choice(self.pii_values['last_name'])}"
+            for _ in range(number_of_entities)
         ]
-        random_pii_entities += [entity["pii_id"] for entity in self.pii_classes]
-        random_pii_entities += ["full_name"]
+        self.pii_values["full_name"].extend(full_names)
+        self.pii_values["full_name"] = list(set(self.pii_values["full_name"]))
+        self.write_generated_pii_to_file(self.pii_values, self.path_to_pii_values)
+        return full_names
+
+    def generate_new_pii_entity(self, entity, write=True):
+        number_of_entities = len(self.pii_values[list(self.pii_values.keys())[0]])
+        print(f"Generating {number_of_entities} {entity} entities")
+        prompt = [pii for pii in self.pii_classes if pii["pii_id"] == entity][0]["prompt"]
+        generated_entities = list(set(self.generate(prompt, USER_PROMPT(number_of_entities))))
+        self.pii_values[entity] = generated_entities
+        if write:
+            self.write_generated_pii_to_file(self.pii_values, self.path_to_pii_values)
+        return generated_entities
+
+    def update_pii_values(self, entity, new_values):
+        if entity in self.pii_values:
+            self.pii_values[entity].extend(new_values)
+            self.pii_values[entity] = list(set(self.pii_values[entity]))
+            self.write_generated_pii_to_file(self.pii_values, self.path_to_pii_values)
+        else:
+            self.pii_values[entity] = new_values
+            self.write_generated_pii_to_file(self.pii_values, self.path_to_pii_values)
+
+    def create_random_pii_values(self):
+
+        generate_vin = int(random.random() <= 0.35)
+        generate_car_plate = int(random.random() <= 0.35)
+
+        random_pii_entities = (
+            ["full_name"] * random.randint(2, 3) +
+            ["address"] * random.randint(1, 2) +
+            ["phone_number"] * random.randint(1, 2) +
+            ["email_address"] * random.randint(1, 2) +
+            ["dates"] * random.randint(1, 2) +
+            ["credit_card_number"] * random.randint(0, 1) +
+            ["iban"] * random.randint(0, 1) +
+            ["company_name"] * random.randint(0, 1) +
+            ["vin"] * generate_vin +
+            ["car_plate"] * generate_car_plate
+        )
 
         random_pii_values = [
             (entity, random.choice(self.pii_values[entity]))
             for entity in random_pii_entities if entity != "signature"
         ]
+        first_names = [("first_name", entity[1].split()[0]) for entity in random_pii_values if entity[0] == "full_name"]
+        first_names = first_names[:random.randint(0, max(len(first_names) - 1, 1))]
+        if first_names:
+            random_pii_values.extend(first_names)
+
+        for i, (entity, value) in enumerate(random_pii_values):
+            if random.random() <= 0.15:
+                value = value.upper()
+                random_pii_values[i] = (entity, value)
+
+        return random_pii_values
+
+    def generate_html_document(self):
+        random_pii_values = self.create_random_pii_values()
+        document_type = random.choice(document_types)
+
         random_font_family = random.choice(font_family)
         random_signature = random.choice(self.signatures_files_paths)
 
@@ -146,25 +289,11 @@ class PIIGenerator:
 
         return html_content, document_meta_info, random_pii_values
 
-    @staticmethod
-    def define_full_name(entities):
-        first_name = [en[1] for en in entities if en[0] == "first_name"][0]
-        last_name = [en[1] for en in entities if en[0] == "last_name"][0]
-        middle_names = [en[1] for en in entities if en[0] == "middle_name"]
-        middle_name = middle_names[0] if middle_names else ""
-        full_name_1 = f"{first_name} {middle_name + ' ' if middle_name else ''}{last_name}"
-        full_name_2 = f"{first_name} {last_name}"
-        return full_name_1, full_name_2
-
     def extract_bounding_boxes(self, document, entities):
         entity_bounding_boxes = []
         found_entities = []
         page = document[0]
         words = page.get_text("words")
-
-        full_name_1, full_name_2 = self.define_full_name(entities)
-        entities.append(["full_name", full_name_1])
-        entities.append(["full_name", full_name_2])
 
         for entity, value in entities:
             entity_boxes = []
