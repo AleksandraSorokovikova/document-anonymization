@@ -14,3 +14,4 @@ scikit-learn==1.5.2
 ultralytics==8.2.100
 comet-ml==3.46.0
 datasets==3.0.1
+PyLaTeX==1.4.2

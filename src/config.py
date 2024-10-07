@@ -230,3 +230,54 @@ font_family = [
     "Mukta Vaani",
     "Tahoma",
 ]
+
+font_family_latex = [
+    "Arial",
+    "Times New Roman",
+    "Verdana",
+    "Courier New",
+    "Georgia",
+    "Helvetica",
+    "Comic Sans MS",
+    "Impact",
+    "Trebuchet MS",
+    "Galvji",
+    "Malayalam Sangam MN",
+    "Andale Mono",
+    "Monaco",
+    "Tahoma",
+]
+
+latex_templates = {
+    "column_prices": columns_with_prices_template,
+    "email": email_template,
+    "form_many_text": form_with_many_text_template,
+    "form_text": form_with_text_template,
+    "letter_plain_text": letter_with_plain_text_template,
+    "multi_tables": multi_tables_columns_template,
+    "multi_format": multi_format_template,
+    "letter_table": letter_with_table_template,
+    "formal_email": formal_email_template,
+    "invoice": invoice_template,
+    "multi_tables_simple": multi_tables_columns_template_simple,
+    "columns_prices_simple": columns_with_prices_template_simple,
+    "email_simple": email_template_simple,
+    "form_many_text_simple": form_with_many_text_template_simple,
+    "form_text_simple": form_with_text_template_simple,
+    "letter_plain_text_simple": letter_with_plain_text_template_simple,
+    "multi_format_simple": multi_format_template_simple,
+    "letter_table_simple": letter_with_table_template_simple,
+    "formal_email_simple": formal_email_template_simple,
+    "invoice_simple": invoice_template_simple,
+}
+
+subjects = [
+    "Apartment",
+    "Vehicle",
+    "Medical issues",
+    "Insurance",
+    "Travel",
+    "Any property ownership",
+    "Service rendered",
+    "Legal issues",
+]

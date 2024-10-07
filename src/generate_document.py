@@ -1,9 +1,9 @@
-import random
 import json
 import openai
 from uuid import uuid4
 import fitz
 import re
+import subprocess
 import pickle
 from fuzzywuzzy import fuzz
 import pdfkit
@@ -15,11 +15,16 @@ from src.config import (
     sections,
     layouts,
     headers,
+    latex_templates,
+    subjects,
+    font_family_latex
 )
 from src.prompts import (
     GENERATE_HTML_CONTENT_SYSTEM_PROMPT,
     GENERATE_HTML_CONTENT_USER_PROMPT,
     USER_PROMPT,
+    GENERATE_LATEX_CONTENT_SYSTEM_PROMPT,
+    GENERATE_LATEX_CONTENT_USER_PROMPT,
 )
 import os
 from collections import defaultdict
@@ -148,7 +153,7 @@ class PIIGenerator:
         self.output_folder = output_folder
         self.documents = []
 
-    def generate(self, system_prompt, user_prompt, use_json=True, temp=0.5):
+    def generate(self, system_prompt, user_prompt, mes_type='json', temp=0.5):
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -160,9 +165,14 @@ class PIIGenerator:
             temperature=temp,
         )
         message = response.choices[0].message.content.strip()
-        if use_json:
+        if mes_type=="json":
             return json.loads(message.replace("```json", "").replace("```", ""))
-        return message.replace("```html", "").replace("```", "")
+        elif mes_type=="html":
+            return message.replace("```html", "").replace("```", "")
+        elif mes_type=="latex":
+            return message.replace("```latex", "").replace("```", "")
+        else:
+            return message
 
     def generate_pii_entities(self, number_of_entities):
         pii_values = {}
@@ -212,20 +222,17 @@ class PIIGenerator:
 
     def create_random_pii_values(self):
 
-        generate_vin = int(random.random() <= 0.35)
-        generate_car_plate = int(random.random() <= 0.35)
-
         random_pii_entities = (
             ["full_name"] * random.randint(2, 3) +
-            ["address"] * random.randint(1, 2) +
-            ["phone_number"] * random.randint(1, 2) +
-            ["email_address"] * random.randint(1, 2) +
-            ["dates"] * random.randint(1, 2) +
-            ["credit_card_number"] * random.randint(0, 1) +
-            ["iban"] * random.randint(0, 1) +
-            ["company_name"] * random.randint(0, 1) +
-            ["vin"] * generate_vin +
-            ["car_plate"] * generate_car_plate
+            ["address"] * random.randint(2, 3) +
+            ["phone_number"] * random.randint(2, 3) +
+            ["email_address"] * random.randint(2, 3) +
+            ["dates"] * random.randint(2, 3) +
+            ["credit_card_number"] * random.randint(1, 2) +
+            ["iban"] * random.randint(1, 2) +
+            ["company_name"] * random.randint(1, 2) +
+            ["vin"] * random.randint(1, 2) +
+            ["car_plate"] * random.randint(1, 2)
         )
 
         random_pii_values = [
@@ -233,9 +240,10 @@ class PIIGenerator:
             for entity in random_pii_entities if entity != "signature"
         ]
         first_names = [("first_name", entity[1].split()[0]) for entity in random_pii_values if entity[0] == "full_name"]
-        first_names = first_names[:random.randint(0, max(len(first_names) - 1, 1))]
-        if first_names:
-            random_pii_values.extend(first_names)
+        last_names = [("last_name", entity[1].split()[-1]) for entity in random_pii_values if entity[0] == "full_name"]
+
+        random_pii_values.extend(first_names)
+        random_pii_values.extend(last_names)
 
         for i, (entity, value) in enumerate(random_pii_values):
             if random.random() <= 0.15:
@@ -244,13 +252,53 @@ class PIIGenerator:
 
         return random_pii_values
 
+    def generate_latex_document(self):
+        random_pii_values = self.create_random_pii_values()
+
+        document_layout = random.choice(list(latex_templates.keys()))
+        document_subject = random.choice(subjects)
+        random_signature = random.choice(self.signatures_files_paths)
+        random_font_family = random.choice(font_family_latex)
+
+        latex_content = self.generate(
+            GENERATE_LATEX_CONTENT_SYSTEM_PROMPT("\n      - ".join(self.pii_entities)),
+            GENERATE_LATEX_CONTENT_USER_PROMPT(
+                latex_templates[document_layout],
+                document_subject,
+                [entity[1] for entity in random_pii_values],
+                random_font_family
+            ),
+            mes_type="latex",
+            temp=0.2,
+        )
+
+        if "path/to/signature.png" in latex_content:
+            latex_content = latex_content.replace(
+                "path/to/signature.png",
+                f"{self.output_folder}/signatures/{random_signature}",
+                1
+            )
+            has_signature = True
+            latex_content.replace("path/to/signature.png", "")
+        else:
+            has_signature = False
+
+        document_meta_info = {
+            "document_layout": document_layout,
+            "document_subject": document_subject,
+            "signature": random_signature if has_signature else None,
+        }
+
+        return latex_content, document_meta_info, random_pii_values
+
+
     def generate_html_document(self):
         random_pii_values = self.create_random_pii_values()
-        document_type = random.choice(document_types)
 
         random_font_family = random.choice(font_family)
         random_signature = random.choice(self.signatures_files_paths)
 
+        document_type = random.choice(document_types)
         chosen_layout = random.choice(layouts)
         chosen_sections = random.sample(sections, 2)
         chosen_headers = random.sample(headers, 3)
@@ -265,7 +313,7 @@ class PIIGenerator:
                 chosen_sections,
                 chosen_headers,
             ),
-            use_json=False,
+            mes_type="html",
             temp=0.2,
         )
 
@@ -289,7 +337,8 @@ class PIIGenerator:
 
         return html_content, document_meta_info, random_pii_values
 
-    def extract_bounding_boxes(self, document, entities):
+    @staticmethod
+    def extract_bounding_boxes(document, entities):
         entity_bounding_boxes = []
         found_entities = []
         page = document[0]
@@ -407,6 +456,32 @@ class PIIGenerator:
             return None
 
     @staticmethod
+    def compile_latex(latex_content, output_folder, output_pdf_name):
+        tex_file_path = os.path.join(output_folder, output_pdf_name.replace('.pdf', '.tex'))
+        output_pdf_path = os.path.join(output_folder, output_pdf_name)
+
+        with open(tex_file_path, 'w') as f:
+            f.write(latex_content)
+
+        try:
+
+            subprocess.run(
+                ['xelatex', '-interaction=batchmode', '-output-directory', output_folder, tex_file_path],
+                stdout=subprocess.DEVNULL,
+                check=True
+            )
+            if not os.path.exists(output_pdf_path):
+                print("PDF generation failed.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error in LaTeX compilation: {e}")
+
+        extensions_to_remove = ['.aux', '.out', '.log', '.tex']
+        for ext in extensions_to_remove:
+            file_to_remove = os.path.join(output_folder, f'{output_pdf_name.replace(".pdf", "")}{ext}')
+            if os.path.exists(file_to_remove):
+                os.remove(file_to_remove)
+
+    @staticmethod
     def adjust_html_content(html_content):
         existing_font_size = re.findall(r"font-size: \d+px;", html_content)
         new_font_size = int(existing_font_size[0].split(": ")[1].split("px")[0]) - 1
@@ -414,6 +489,17 @@ class PIIGenerator:
             r"font-size: \d+px;", f"font-size: {new_font_size}px;", html_content
         )
         return html_content
+
+    @staticmethod
+    def adjust_latex_content(latex_content):
+        existing_font_size = int(
+            re.findall(r"\\documentclass\[\d+pt\]", latex_content)[0].split("[")[1].split("pt")[0])
+        new_font_size = existing_font_size - 1
+        latex_content = latex_content.replace(
+            f"documentclass[{existing_font_size}pt]",
+            f"documentclass[{new_font_size}pt]"
+        )
+        return latex_content
 
     def create_pdf_from_html(self, html_content, file_name):
 
@@ -445,13 +531,47 @@ class PIIGenerator:
         )
         return pdf
 
-    def create_document(self):
-        html_content, document_meta_info, random_pii_values = (
-            self.generate_html_document()
+    def create_pdf_from_latex(self, latex_content, file_name):
+
+        self.compile_latex(latex_content, os.path.join(self.output_folder, "original"), file_name)
+        pdf = fitz.open(os.path.join(self.output_folder, "original", file_name))
+        if pdf.page_count > 1:
+            pdf.delete_page(1)
+            pdf.save(os.path.join(self.output_folder, "original", file_name))
+
+        with open(
+                os.path.join(
+                    self.output_folder, "latex", file_name.replace(".pdf", ".tex")
+                ),
+                "w",
+        ) as f:
+            f.write(latex_content)
+
+        pdf.save(
+            os.path.join(self.output_folder, "original", file_name),
+            incremental=True,
+            encryption=fitz.PDF_ENCRYPT_KEEP,
         )
-        document_type = document_meta_info["document_type"]
-        file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:6]}.pdf"
-        pdf = self.create_pdf_from_html(html_content, file_name)
+        return pdf
+
+    def create_document(self, format):
+        if format == "html":
+            html_content, document_meta_info, random_pii_values = (
+                self.generate_html_document()
+            )
+            document_type = document_meta_info["document_type"]
+            file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:6]}.pdf"
+            pdf = self.create_pdf_from_html(html_content, file_name)
+        elif format == "latex":
+            latex_content, document_meta_info, random_pii_values = (
+                self.generate_latex_document()
+            )
+            document_type = document_meta_info["document_layout"]
+            file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:6]}.pdf"
+            pdf = self.create_pdf_from_latex(latex_content, file_name)
+        else:
+            raise ValueError("Format should be either 'html' or 'latex'")
+
         bounding_boxes, found_entities = self.extract_bounding_boxes(
             pdf, random_pii_values
         )
@@ -479,17 +599,17 @@ class PIIGenerator:
                 f"{file_name.replace('.pdf', '_annotated.pdf')}",
             ),
         )
-        # save bounding_boxes pickle
-        with open(
-                os.path.join(
-                    self.output_folder,
-                    "entities",
-                    f"{file_name.replace('.pdf', '_bounding_boxes.json')}",
-                ),
-                "w",
-                encoding="utf-8",
-        ) as f:
-            json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
+
+        # with open(
+        #         os.path.join(
+        #             self.output_folder,
+        #             "entities",
+        #             f"{file_name.replace('.pdf', '_bounding_boxes.json')}",
+        #         ),
+        #         "w",
+        #         encoding="utf-8",
+        # ) as f:
+        #     json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
 
         self.documents.append(
             {
