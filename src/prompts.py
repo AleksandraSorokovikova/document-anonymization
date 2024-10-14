@@ -218,10 +218,12 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
 
 3. **Content Embedding:**
     - You must choose which PII entities to embed in the document based on the provided document structure. You don't need to embed all PII entities in the document if they are not required within the layout.
+    - YOU MUST NOT CHANGE EXISTING PII ENTITIES, namely, add extra spaces and other symbols to the provided PII data, change date formats, change phone number/credit card formats, or modify the provided PII data in any way.
+    - YOU MUST NOT DIVIDE PII DATA INTO MULTIPLE PARTS AND EMBED THEM SEPARATELY, namely splitting a phone number into area code and number, or separating a date into day, month, and year, or split addresses and put town os street separately.
     - Ensure that all chosen PII entities are embedded within the HTML content and placed in appropriate sections (e.g., full name in the full name field, address in the address field).
     - Vary the sentence structure for embedding PII data.
     - Follow the structure provided in the **Document Structure** section to organize the content.
-    - You MUST NOT use any additional PII data beyond the provided list.
+    - YOU MUST NOT USE ANY ADDITIONAL PII DATA BEYOND THE PROVIDED LIST.
 
 4. **Document Structure and Layout:**
     The structure of the document will be specified by the following randomly selected components:
@@ -301,10 +303,12 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
 
 3. **Content Embedding:**
     - You must choose which PII entities to embed in the document based on the provided layout description. You don't need to embed all PII entities in the document, if they are not required within the layout.
+    - YOU MUST NOT CHANGE EXISTING PII ENTITIES, namely, add extra spaces and other symbols to the provided PII data, change date formats, change phone number/credit card formats, or modify the provided PII data in any way.
+    - YOU MUST NOT DIVIDE PII DATA INTO MULTIPLE PARTS AND EMBED THEM SEPARATELY, namely splitting addresses and put town or street separately, or splitting a phone number into area code and number, or separating a date into day, month, and year.
     - Ensure that all chosen PII entities are embedded within the LaTeX content and placed in appropriate sections (e.g., full name in the full name field, address in the address field).
     - Vary the sentence structure for embedding PII data.
     - Follow the structure provided in the **Document Layout Description** section to organize the content.
-    - You MUST NOT use any additional PII data beyond the provided list.
+    - YOU MUST NOT USE ANY ADDITIONAL PII DATA BEYOND THE PROVIDED LIST.
     
 4. **Document Structure and Layout:**
     - The described layout is precise and should be followed accurately.
@@ -327,6 +331,8 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     - This includes but is not limited to:
       - {0}
     - Only PII entities from the provided list should appear in the document. No placeholders or random extra PII should be generated.
+    
+IF YOU VIOLATE ANY OF THE ABOVE RULES, I WILL LOOSE A LOT OF MONEY AND WILL NEVER TRUST YOU AGAIN.
 
 **Output format:**
     - A valid LaTeX file. Write ONLY latex code without any additional comments.

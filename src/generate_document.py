@@ -152,6 +152,12 @@ class PIIGenerator:
             self.pii_values = existing_pii_values
         self.output_folder = output_folder
         self.documents = []
+        self.create_directories()
+
+    def create_directories(self):
+        for folder in ["original", "annotated", "entities", "html", "latex"]:
+            if not os.path.exists(os.path.join(self.output_folder, folder)):
+                os.makedirs(os.path.join(self.output_folder, folder))
 
     def generate(self, system_prompt, user_prompt, mes_type='json', temp=0.5):
         response = self.client.chat.completions.create(
@@ -229,7 +235,7 @@ class PIIGenerator:
     def create_random_pii_values(self):
 
         random_pii_entities = (
-            ["full_name"] * random.randint(2, 3) +
+            ["full_name"] * random.randint(3, 4) +
             ["address"] * random.randint(2, 3) +
             ["phone_number"] * random.randint(2, 3) +
             ["email_address"] * random.randint(2, 3) +
@@ -277,7 +283,7 @@ class PIIGenerator:
                 random_font_family
             ),
             mes_type="latex",
-            temp=0.2,
+            temp=0.1,
         )
 
         if "path/to/signature.png" in latex_content:
@@ -293,6 +299,8 @@ class PIIGenerator:
 
         document_meta_info = {
             "document_layout": document_layout,
+            "font_family": random_font_family,
+            "doc_format": "latex",
             "document_subject": document_subject,
             "signature": random_signature if has_signature else None,
         }
@@ -335,6 +343,7 @@ class PIIGenerator:
             has_signature = False
 
         document_meta_info = {
+            "doc_format": "html",
             "document_type": document_type,
             "font_family": random_font_family,
             "layout": chosen_layout,
@@ -386,10 +395,20 @@ class PIIGenerator:
                             entity_index = 0
                         else:
                             # group words by line and block
-                            parts = {}
+                            lines_y0 = {}
                             for box in entity_boxes:
                                 line = box[6]
+                                y0 = int(box[1])
+                                if y0 not in lines_y0:
+                                    lines_y0[y0] = []
+                                lines_y0[y0].append(line)
+                            lines = {line: i for i, line in enumerate(lines_y0.keys())}
+                            parts = {}
+                            for box in entity_boxes:
+                                # line = box[6]
                                 block = box[5]
+                                y0 = int(box[1])
+                                line = lines[y0]
                                 if (line, block) not in parts:
                                     parts[(line, block)] = []
                                 parts[(line, block)].append(box)
@@ -464,15 +483,24 @@ class PIIGenerator:
             return None
 
     @staticmethod
-    def compile_latex(latex_content, output_folder, output_pdf_name):
+    def insert_graphics_package(latex_content):
+        if "usepackage{graphicx}" not in latex_content:
+            latex_content = latex_content.replace(
+                "pt]{article}",
+                "pt]{article}\n\\usepackage{graphicx}"
+            )
+        return latex_content
+
+    def compile_latex(self, latex_content, output_folder, output_pdf_name):
         tex_file_path = os.path.join(output_folder, output_pdf_name.replace('.pdf', '.tex'))
         output_pdf_path = os.path.join(output_folder, output_pdf_name)
+
+        latex_content = self.insert_graphics_package(latex_content)
 
         with open(tex_file_path, 'w') as f:
             f.write(latex_content)
 
         try:
-
             subprocess.run(
                 ['xelatex', '-interaction=batchmode', '-output-directory', output_folder, tex_file_path],
                 stdout=subprocess.DEVNULL,
@@ -592,14 +620,6 @@ class PIIGenerator:
                 bounding_boxes.append(
                     ("signature", document_meta_info["signature"], signature_bbox)
                 )
-        # missing_entities, not_embedded_entities = self.check_entities(
-        #     found_entities, random_pii_values, pdf
-        # )
-        # if missing_entities or not_embedded_entities:
-        #     print(f"Entities not found in file {file_name}")
-        #     print(f"Missing entities: {missing_entities}")
-        #     print(f"Not embedded entities: {not_embedded_entities}")
-        #     print("\n")
 
         self.draw_bounding_boxes(pdf, bounding_boxes)
         pdf.save(
@@ -610,16 +630,16 @@ class PIIGenerator:
             ),
         )
 
-        # with open(
-        #         os.path.join(
-        #             self.output_folder,
-        #             "entities",
-        #             f"{file_name.replace('.pdf', '_bounding_boxes.json')}",
-        #         ),
-        #         "w",
-        #         encoding="utf-8",
-        # ) as f:
-        #     json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
+        with open(
+                os.path.join(
+                    self.output_folder,
+                    "entities",
+                    f"{file_name.replace('.pdf', '_bounding_boxes.json')}",
+                ),
+                "w",
+                encoding="utf-8",
+        ) as f:
+            json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
 
         self.documents.append(
             {
