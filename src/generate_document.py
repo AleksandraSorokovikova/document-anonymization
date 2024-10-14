@@ -5,6 +5,7 @@ import fitz
 import re
 import subprocess
 import pickle
+from datetime import datetime
 from fuzzywuzzy import fuzz
 import pdfkit
 from src.config import (
@@ -641,16 +642,16 @@ class PIIGenerator:
         ) as f:
             json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
 
-        self.documents.append(
-            {
+        final_documents = {
                 "document_meta_info": document_meta_info,
                 "bounding_boxes": bounding_boxes,
                 "file_name": file_name,
                 "random_pii_values": random_pii_values,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
-        )
+        self.documents.append(final_documents)
         if path:
-            self.append_document_json(self.documents[-1], path)
+            self.append_document_json(final_documents, path)
 
     def append_document_json(self, document, path):
         try:
