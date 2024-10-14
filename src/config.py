@@ -269,6 +269,16 @@ latex_templates = {
     "letter_table_simple": letter_with_table_template_simple,
     "formal_email_simple": formal_email_template_simple,
     "invoice_simple": invoice_template_simple,
+    "columns_with_prices_template_plain": columns_with_prices_template_plain,
+    "email_template_plain": email_template_plain,
+    "form_with_many_text_template_plain": form_with_many_text_template_plain,
+    "form_with_text_template_plain": form_with_text_template_plain,
+    "letter_with_plain_text_template_plain": letter_with_plain_text_template_plain,
+    "multi_tables_columns_template_plain": multi_tables_columns_template_plain,
+    "multi_format_template_plain": multi_format_template_plain,
+    "letter_with_table_template_plain": letter_with_table_template_plain,
+    "formal_email_template_plain": formal_email_template_plain,
+    "invoice_template_plain": invoice_template_plain,
 }
 
 subjects = [

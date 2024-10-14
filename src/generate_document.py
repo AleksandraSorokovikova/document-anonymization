@@ -483,7 +483,7 @@ class PIIGenerator:
             return None
 
     @staticmethod
-    def insert_graphics_package(latex_content):
+    def insert_graphics_package(latex_content, output_pdf_name):
         if "usepackage{graphicx}" not in latex_content:
             latex_content = latex_content.replace(
                 "pt]{article}",
@@ -495,7 +495,7 @@ class PIIGenerator:
         tex_file_path = os.path.join(output_folder, output_pdf_name.replace('.pdf', '.tex'))
         output_pdf_path = os.path.join(output_folder, output_pdf_name)
 
-        latex_content = self.insert_graphics_package(latex_content)
+        latex_content = self.insert_graphics_package(latex_content, output_pdf_name)
 
         with open(tex_file_path, 'w') as f:
             f.write(latex_content)
@@ -592,7 +592,7 @@ class PIIGenerator:
         )
         return pdf
 
-    def create_document(self, doc_format):
+    def create_document(self, doc_format, path=None):
         if doc_format == "html":
             html_content, document_meta_info, random_pii_values = (
                 self.generate_html_document()
@@ -649,6 +649,20 @@ class PIIGenerator:
                 "random_pii_values": random_pii_values,
             }
         )
+        if path:
+            self.append_document_json(self.documents[-1], path)
+
+    def append_document_json(self, document, path):
+        try:
+            with open(os.path.join(self.output_folder, path), "r") as f:
+                existing_documents = json.load(f)
+                existing_documents.append(document)
+            with open(
+                    os.path.join(self.output_folder, path), "w", encoding="utf-8"
+            ) as f:
+                json.dump(self.documents, f, indent=4, ensure_ascii=False)
+        except FileNotFoundError:
+            pass
 
     def save_documents(self, path, json_format=True):
         try:

@@ -292,6 +292,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     ```latex
     \\documentclass[10pt]...
     ```
+    - Remember to add usepackage: graphicx.
     - **Do not** highlight PII entities with different font colors or background effects; they should appear as regular plain text.
     - Use the provided font family for the document content. Include the font package in the preamble:
         - usepackage: fontspec
@@ -299,7 +300,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     - **Prevent Intersection Issues:**
       - To prevent horizontal lines from intersecting, include the following in the preamble:
         - use package microtype for automatic text adjustment.
-        - Add extra horizontal spacing where lines may intersect by increasing the space in tabular environments or by using `\hspace` when needed.
+        - Add extra horizontal spacing where lines may intersect by increasing the space in tabular environments or by using `\hspace` when needed. If the line is very long, add hspace = 5cm.
 
 3. **Content Embedding:**
     - You must choose which PII entities to embed in the document based on the provided layout description. You don't need to embed all PII entities in the document, if they are not required within the layout.
@@ -441,6 +442,11 @@ The document layout follows a structured format with multiple sections presented
 - The document maintains a clean, column-based structure with consistent spacing for easy reading.
 """
 
+columns_with_prices_template_plain = """
+The document layout consists of a structured format with multiple sections presented in columns.
+The document contains approximately 200-300 words and about 30 sentences.
+"""
+
 email_template = """
 The layout of the provided document follows the structure of a formal email. Here’s a detailed description of the layout:
 
@@ -511,6 +517,11 @@ The document layout resembles a formal email structure, with key sections presen
 
 ### General Observations:
 - The document maintains consistent left alignment throughout and uses a simple font. It has around 120-140 words and 7-8 sentences.
+"""
+
+email_template_plain = """
+The document layout resembles a formal email structure, with key sections presented in a straightforward manner.
+The document contains approximately 120-140 words and 7-8 sentences.
 """
 
 
@@ -589,6 +600,11 @@ The document follows a structured layout typical of a form, organized into clear
 
 ### General Observations:
 - The form is structured with labeled input fields, text blocks, and checkboxes, organized into distinct sections for clarity. It contains around 300-400 words and 15-20 sentences of explanation and instructions.
+"""
+
+form_with_many_text_template_plain = """
+The document layout follows a structured form format with multiple sections for information input and instructions.
+The document contains approximately 300-400 words and 15-20 sentences.
 """
 
 form_with_text_template = """
@@ -679,6 +695,12 @@ The document layout is structured as a **legal declaration form** with clear sec
 - The document is well-organized, with labeled input fields and bold section headers. It contains around 200-300 words and 10-15 sentences of legal text.
 """
 
+form_with_text_template_plain = """
+The document layout is structured as a legal declaration form with clear sections for input and legal text.
+The document contains approximately 200-300 words and around 10-15 sentences.
+"""
+
+
 letter_with_plain_text_template = """
 The layout of this document follows the format of a formal **letter** with various sections and detailed information. Below is a detailed description of its layout:
 
@@ -762,6 +784,11 @@ The document is structured as a formal **letter** with a clear layout and detail
 - **Claim Letter**
 """
 
+letter_with_plain_text_template_plain = """
+The document layout follows a formal letter format with clear sections and detailed information.
+The document contains approximately 300-400 words and around 30-40 sentences.
+"""
+
 multi_tables_columns_template = """
 The layout of this document is structured as a **financial report or invoice review**. Below is a detailed description of its layout:
 
@@ -838,6 +865,11 @@ The layout of this document follows a structured format typical of a report.
 
 ### General Structure:
 - The document is organized into well-defined sections, with the table taking up the largest portion, and contains text and numeric entries spread across multiple rows.
+"""
+
+multi_tables_columns_template_plain = """
+The document layout follows a structured format typical of a report, with clear sections for information and financial details.
+The document contains approximately 150-200 words and 10-15 numeric entries.
 """
 
 multi_format_template = """
@@ -924,6 +956,11 @@ The document follows the structure of a **service invoice** with clearly organiz
 - **Service Invoice**
 """
 
+multi_format_template_plain = """
+The document layout follows the structure of a service invoice with clear sections for key information.
+The document contains approximately 200-300 words with a focus on numeric values in the itemized table.
+"""
+
 letter_with_table_template = """
 The layout of this document follows the structure of a **formal letter** with additional **table** elements. Below is a detailed description of its layout:
 
@@ -1006,6 +1043,11 @@ The document is structured as a **formal letter** with an additional **table** f
 - **Formal Business Letter**
 """
 
+letter_with_table_template_plain = """
+The document layout is structured as a formal letter with an additional table for detailed information.
+The document contains approximately 300-400 words and around 20-25 sentences.
+"""
+
 formal_email_template = """
 The layout of the provided document follows the structure of a formal **email**. Here’s a detailed description of the layout:
 
@@ -1083,6 +1125,11 @@ The document is structured as a formal **email** with clearly defined sections.
 
 ### Document Type Suggestion:
 - **Email**
+"""
+
+formal_email_template_plain = """
+The document layout is structured as a formal email with defined sections.
+The document contains approximately 120-140 words and 7-8 sentences.
 """
 
 
@@ -1175,4 +1222,9 @@ The document is structured as an **invoice** with clearly defined sections for c
 
 ### Document Type Suggestion:
 - **Invoice**
+"""
+
+invoice_template_plain = """
+The document layout is structured as an invoice with clear sections for company, customer, and payment details.
+The document contains approximately 200-300 words and focuses on numeric values in the itemized table.
 """
