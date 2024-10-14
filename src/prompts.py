@@ -294,6 +294,10 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     - Use the provided font family for the document content. Include the font package in the preamble:
         - usepackage: fontspec
         - setmainfont: Font-Family
+    - **Prevent Intersection Issues:**
+      - To prevent horizontal lines from intersecting, include the following in the preamble:
+        - use package microtype for automatic text adjustment.
+        - Add extra horizontal spacing where lines may intersect by increasing the space in tabular environments or by using `\hspace` when needed.
 
 3. **Content Embedding:**
     - You must choose which PII entities to embed in the document based on the provided layout description. You don't need to embed all PII entities in the document, if they are not required within the layout.
@@ -311,7 +315,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
 5. **Signatures insertion:**
     - If the generated document requires a signature, you must place in the LaTeX file the path to signature image in the corresponding field (in tag `includegraphics` with width="200" and height="100").
     - Do not put more than one signature in the document.
-    - The path should look exactly like this: path/to/signature.png` in \includegraphics[width=200pt,height=100pt]
+    - The path should look exactly like this: path/to/signature.png in \includegraphics[width=200pt,height=100pt]
     
 6. **Content Focus:**
     - The main text of the document should align with the document subject provided in Document Subject section.
@@ -325,7 +329,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     - Only PII entities from the provided list should appear in the document. No placeholders or random extra PII should be generated.
 
 **Output format:**
-    - A valid LaTeX file. Write ONLY latex code without any additional comments
+    - A valid LaTeX file. Write ONLY latex code without any additional comments.
 """.format
 
 

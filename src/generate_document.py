@@ -184,16 +184,22 @@ class PIIGenerator:
                     self.generate(pii_entity["prompt"], USER_PROMPT(number_of_entities))
                 )
             )
+        first_name = random.choice(pii_values['first_name'])
+        last_name = random.choice(pii_values['last_name'])
+        middle_name = random.choice(pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''
         full_names = [
-            f"{random.choice(pii_values['first_name'])} {random.choice(pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''}{random.choice(pii_values['last_name'])}"
+            f"{first_name} {middle_name}{last_name}"
             for _ in range(number_of_entities)
         ]
         pii_values["full_name"] = list(set(full_names))
         return pii_values
 
     def generate_full_names(self, number_of_entities):
+        first_name = random.choice(self.pii_values['first_name'])
+        last_name = random.choice(self.pii_values['last_name'])
+        middle_name = random.choice(self.pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''
         full_names = [
-            f"{random.choice(self.pii_values['first_name'])} {random.choice(self.pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''}{random.choice(self.pii_values['last_name'])}"
+            f"{first_name} {middle_name}{last_name}"
             for _ in range(number_of_entities)
         ]
         self.pii_values["full_name"].extend(full_names)
@@ -239,8 +245,10 @@ class PIIGenerator:
             (entity, random.choice(self.pii_values[entity]))
             for entity in random_pii_entities if entity != "signature"
         ]
-        first_names = [("first_name", entity[1].split()[0]) for entity in random_pii_values if entity[0] == "full_name"]
-        last_names = [("last_name", entity[1].split()[-1]) for entity in random_pii_values if entity[0] == "full_name"]
+        first_names = [("first_name", entity[1].split()[0])
+                       for entity in random_pii_values if entity[0] == "full_name"]
+        last_names = [("last_name", entity[1].split()[-1])
+                      for entity in random_pii_values if entity[0] == "full_name"]
 
         random_pii_values.extend(first_names)
         random_pii_values.extend(last_names)
@@ -535,9 +543,11 @@ class PIIGenerator:
 
         self.compile_latex(latex_content, os.path.join(self.output_folder, "original"), file_name)
         pdf = fitz.open(os.path.join(self.output_folder, "original", file_name))
-        if pdf.page_count > 1:
+        if pdf.page_count == 2:
             pdf.delete_page(1)
             pdf.save(os.path.join(self.output_folder, "original", file_name))
+        elif pdf.page_count > 2:
+            raise ValueError("Latex document has more than 1 page")
 
         with open(
                 os.path.join(
@@ -554,15 +564,15 @@ class PIIGenerator:
         )
         return pdf
 
-    def create_document(self, format):
-        if format == "html":
+    def create_document(self, doc_format):
+        if doc_format == "html":
             html_content, document_meta_info, random_pii_values = (
                 self.generate_html_document()
             )
             document_type = document_meta_info["document_type"]
             file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:6]}.pdf"
             pdf = self.create_pdf_from_html(html_content, file_name)
-        elif format == "latex":
+        elif doc_format == "latex":
             latex_content, document_meta_info, random_pii_values = (
                 self.generate_latex_document()
             )
