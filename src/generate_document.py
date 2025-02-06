@@ -26,12 +26,20 @@ from src.prompts import (
     USER_PROMPT,
     GENERATE_LATEX_CONTENT_SYSTEM_PROMPT,
     GENERATE_LATEX_CONTENT_USER_PROMPT,
+    GENERATE_LATEX_FROM_PICTURE_AND_PII_SYSTEM_PROMPT,
+    GENERATE_LATEX_FROM_PICTURE_AND_PII_USER_PROMPT
 )
 import os
 from collections import defaultdict
 from tqdm.notebook import tqdm
 import random
 from datasets import load_dataset
+import base64
+
+
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
 
 
 def generate_random_address(entities, n):
@@ -130,7 +138,7 @@ class PIIGenerator:
             generate_new=False,
     ):
         self.client = openai.Client()
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.path_to_pii_values = path_to_pii_values
         self.pii_classes = pii_classes
         self.pii_entities = [pii["class"] for pii in self.pii_classes]
@@ -160,12 +168,21 @@ class PIIGenerator:
             if not os.path.exists(os.path.join(self.output_folder, folder)):
                 os.makedirs(os.path.join(self.output_folder, folder))
 
-    def generate(self, system_prompt, user_prompt, mes_type='json', temp=0.5):
+    def generate(self, system_prompt, user_prompt, mes_type='json', temp=0.5, image_path=None):
+
+        if image_path:
+            user_message = [
+                {"type": "text", "text": user_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(image_path)}"}}
+            ]
+        else:
+            user_message = user_prompt
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": user_message},
             ],
             max_tokens=3000,
             n=1,
@@ -201,18 +218,36 @@ class PIIGenerator:
         pii_values["full_name"] = list(set(full_names))
         return pii_values
 
-    def generate_full_names(self, number_of_entities):
-        first_name = random.choice(self.pii_values['first_name'])
-        last_name = random.choice(self.pii_values['last_name'])
-        middle_name = random.choice(self.pii_values['middle_name']) + ' ' if random.random() <= 0.2 else ''
-        full_names = [
-            f"{first_name} {middle_name}{last_name}"
-            for _ in range(number_of_entities)
-        ]
-        self.pii_values["full_name"].extend(full_names)
-        self.pii_values["full_name"] = list(set(self.pii_values["full_name"]))
-        self.write_generated_pii_to_file(self.pii_values, self.path_to_pii_values)
-        return full_names
+    @staticmethod
+    def adjust_pii(random_pii_entities):
+        for pii in random_pii_entities:
+            if pii[0] == "full_name":
+                if len(pii[1].split()) == 2:
+                    if random.random() <= 0.2:
+                        # Surname, Name
+                        pii[1] = f"{pii[1].split()[1]}, {pii[1].split()[0]}"
+                    elif random.random() <= 0.2:
+                        # N. Surname
+                        pii[1] = f"{pii[1].split()[0][0]}. {pii[1].split()[1]}"
+
+                    add_mr_or_ms = random.random() <= 0.2 and ',' not in pii[1]
+                    if add_mr_or_ms:
+                        prefix = random.choice(["Mr.", "Ms."])
+                        pii[1] = f"{prefix} {pii[1]}"
+                if len(pii[1].split()) == 3 and random.random() <= 0.2:
+                    # Name M. Surname
+                    pii[1] = f"{pii[1].split()[0]} {pii[1].split()[1][0]}. {pii[1].split()[2]}"
+
+            if pii[0] == "email_address":
+                if random.random() <= 0.2:
+                    entity = pii[1].split('@')
+                    pii[1] = entity[0].upper() + '@' + entity[1]
+
+        # make tuples
+        for i, pii in enumerate(random_pii_entities):
+            random_pii_entities[i] = tuple(pii)
+
+        return random_pii_entities
 
     def generate_new_pii_entity(self, entity, write=True):
         number_of_entities = len(self.pii_values[list(self.pii_values.keys())[0]])
@@ -236,8 +271,8 @@ class PIIGenerator:
     def create_random_pii_values(self):
 
         random_pii_entities = (
-            ["full_name"] * random.randint(3, 4) +
-            ["address"] * random.randint(2, 3) +
+            ["full_name"] * random.randint(5, 6) +
+            ["address"] * random.randint(3, 4) +
             ["phone_number"] * random.randint(2, 3) +
             ["email_address"] * random.randint(2, 3) +
             ["dates"] * random.randint(2, 3) +
@@ -249,43 +284,62 @@ class PIIGenerator:
         )
 
         random_pii_values = [
-            (entity, random.choice(self.pii_values[entity]))
+            [entity, random.choice(self.pii_values[entity])]
             for entity in random_pii_entities if entity != "signature"
         ]
-        first_names = [("first_name", entity[1].split()[0])
+        first_names = [["first_name", entity[1].split()[0]]
                        for entity in random_pii_values if entity[0] == "full_name"]
-        last_names = [("last_name", entity[1].split()[-1])
+        last_names = [["last_name", entity[1].split()[-1]]
                       for entity in random_pii_values if entity[0] == "full_name"]
 
         random_pii_values.extend(first_names)
         random_pii_values.extend(last_names)
 
         for i, (entity, value) in enumerate(random_pii_values):
-            if random.random() <= 0.15:
+            if random.random() <= 0.2:
                 value = value.upper()
-                random_pii_values[i] = (entity, value)
+                random_pii_values[i] = [entity, value]
+
+        random_pii_values = self.adjust_pii(random_pii_values)
 
         return random_pii_values
 
-    def generate_latex_document(self):
+    def generate_latex_document(self, doc_img_folder_path=None):
         random_pii_values = self.create_random_pii_values()
-
-        document_layout = random.choice(list(latex_templates.keys()))
         document_subject = random.choice(subjects)
         random_signature = random.choice(self.signatures_files_paths)
         random_font_family = random.choice(font_family_latex)
+        document_layout = random.choice(list(latex_templates.keys()))
 
-        latex_content = self.generate(
-            GENERATE_LATEX_CONTENT_SYSTEM_PROMPT("\n      - ".join(self.pii_entities)),
-            GENERATE_LATEX_CONTENT_USER_PROMPT(
-                latex_templates[document_layout],
-                document_subject,
-                [entity[1] for entity in random_pii_values],
-                random_font_family
-            ),
-            mes_type="latex",
-            temp=0.1,
-        )
+        if not doc_img_folder_path:
+            latex_content = self.generate(
+                GENERATE_LATEX_CONTENT_SYSTEM_PROMPT("\n      - ".join(self.pii_entities)),
+                GENERATE_LATEX_CONTENT_USER_PROMPT(
+                    random_pii_values,
+                    document_subject,
+                    latex_templates[document_layout],
+                    random_font_family
+                ),
+                mes_type="latex",
+                temp=0.4,
+            )
+        else:
+            images = [img for img in os.listdir(doc_img_folder_path)]
+            images = [img for img in images if img.endswith(".jpg") and "train" in img]
+            chosen_image = random.choice(images)
+            path_to_picture = os.path.join(doc_img_folder_path, chosen_image)
+            document_layout = chosen_image.split('.jpg')[0]
+            latex_content = self.generate(
+                GENERATE_LATEX_FROM_PICTURE_AND_PII_SYSTEM_PROMPT,
+                GENERATE_LATEX_FROM_PICTURE_AND_PII_USER_PROMPT(
+                    random_pii_values,
+                    document_subject,
+                    random_font_family
+                ),
+                image_path=path_to_picture,
+                mes_type="latex",
+                temp=0.4
+            )
 
         if "path/to/signature.png" in latex_content:
             latex_content = latex_content.replace(
@@ -299,11 +353,11 @@ class PIIGenerator:
             has_signature = False
 
         document_meta_info = {
-            "document_layout": document_layout,
+            "document_type": f"from_image_{document_layout}" if doc_img_folder_path else document_layout,
             "font_family": random_font_family,
             "doc_format": "latex",
             "document_subject": document_subject,
-            "signature": random_signature if has_signature else None,
+            "signature": random_signature if has_signature else None
         }
 
         return latex_content, document_meta_info, random_pii_values
@@ -324,14 +378,14 @@ class PIIGenerator:
             GENERATE_HTML_CONTENT_SYSTEM_PROMPT("\n      - ".join(self.pii_entities)),
             GENERATE_HTML_CONTENT_USER_PROMPT(
                 document_type,
-                [entity[1] for entity in random_pii_values],
+                random_pii_values,
                 random_font_family,
                 chosen_layout,
                 chosen_sections,
                 chosen_headers,
             ),
             mes_type="html",
-            temp=0.2,
+            temp=0.4,
         )
 
         if "path/to/signature.png" in html_content:
@@ -593,20 +647,20 @@ class PIIGenerator:
         )
         return pdf
 
-    def create_document(self, doc_format, path=None):
+    def create_document(self, doc_format, path=None, doc_img_folder_path=None):
         if doc_format == "html":
             html_content, document_meta_info, random_pii_values = (
                 self.generate_html_document()
             )
             document_type = document_meta_info["document_type"]
-            file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:6]}.pdf"
+            file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:7]}.pdf"
             pdf = self.create_pdf_from_html(html_content, file_name)
         elif doc_format == "latex":
             latex_content, document_meta_info, random_pii_values = (
-                self.generate_latex_document()
+                self.generate_latex_document(doc_img_folder_path)
             )
-            document_type = document_meta_info["document_layout"]
-            file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:6]}.pdf"
+            document_type = document_meta_info["document_type"]
+            file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:7]}.pdf"
             pdf = self.create_pdf_from_latex(latex_content, file_name)
         else:
             raise ValueError("Format should be either 'html' or 'latex'")
@@ -643,11 +697,11 @@ class PIIGenerator:
             json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
 
         final_documents = {
+                "file_name": file_name,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "document_meta_info": document_meta_info,
                 "bounding_boxes": bounding_boxes,
-                "file_name": file_name,
                 "random_pii_values": random_pii_values,
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
         self.documents.append(final_documents)
         if path:
@@ -661,7 +715,7 @@ class PIIGenerator:
             with open(
                     os.path.join(self.output_folder, path), "w", encoding="utf-8"
             ) as f:
-                json.dump(self.documents, f, indent=4, ensure_ascii=False)
+                json.dump(existing_documents, f, indent=4, ensure_ascii=False)
         except FileNotFoundError:
             pass
 

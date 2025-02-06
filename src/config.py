@@ -13,11 +13,6 @@ pii_classes = [
         "prompt": GENERATE_LAST_NAMES_SYSTEM_PROMPT,
     },
     {
-        "class": "Middle Name",
-        "pii_id": "middle_name",
-        "prompt": GENERATE_MIDDLE_NAMES_SYSTEM_PROMPT,
-    },
-    {
         "class": "Address",
         "pii_id": "address",
         "prompt": GENERATE_ADDRESS_SYSTEM_PROMPT
@@ -72,10 +67,33 @@ pii_classes = [
         "pii_id": "car_plate",
         "prompt": GENERATE_CAR_PLATE_NUMBER_SYSTEM_PROMPT,
     },
+    {
+        "class": "Middle Name",
+        "pii_id": "middle_name",
+        "prompt": GENERATE_MIDDLE_NAMES_SYSTEM_PROMPT,
+    },
 ]
 
-pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes)}
-id_to_pii = {i: pii["pii_id"] for i, pii in enumerate(pii_classes)}
+pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
+id_to_pii = {i: pii["pii_id"] for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
+
+
+pii_names = [
+    "First Name",
+    "Last Name",
+    "Address",
+    "Phone Number",
+    "Email Address",
+    "Dates",
+    "Credit Card Number",
+    "IBAN",
+    "Company Name",
+    "Signature",
+    "Full Name",
+    "VIN",
+    "Car Plate"
+]
+
 
 document_types = [
     "Invoice",
@@ -170,36 +188,35 @@ headers = [
 
 
 pii_entities_colors = {
-    "first_name": (1, 0, 0),  # Красный
-    "last_name": (1, 0.5, 0.5),  # Розовый
-    "middle_name": (1, 0.5, 1),  # Фуксия
-    "address": (0, 1, 0),  # Зеленый
-    "phone_number": (0, 0, 1),  # Синий
-    "email_address": (1, 1, 0),  # Желтый
-    "dates": (1, 0, 1),  # Фиолетовый
-    "credit_card_number": (0, 1, 1),  # Бирюзовый
-    "iban": (1, 0.5, 0),  # Оранжевый
-    "company_name": (0, 0.5, 0.5),  # Темно-зеленый
-    "signature": (0.5, 0.5, 0.5),  # Серый
-    "full_name": (0.5, 0, 0.5),  # Темно-фиолетовый
-    "vin": (0.5, 1, 0),  # Ярко-зеленый
-    "car_plate": (0, 0.5, 1),  # Светло-синий
+    "first_name": (1, 0, 0),  # Red
+    "last_name": (1, 0.5, 0.5),  # Pink
+    "address": (0, 1, 0),  # Green
+    "phone_number": (0, 0, 1),  # Blue
+    "email_address": (1, 1, 0),  # Yellow
+    "dates": (0.5, 0, 0.5),  # Purple
+    "credit_card_number": (0.25, 0.88, 0.82),  # Turquoise
+    "iban": (1, 0.5, 0),  # Orange
+    "company_name": (0.5, 0, 0),  # Maroon
+    "signature": (0.5, 0.5, 0.5),  # Grey
+    "full_name": (1, 0, 1),  # Fuchsia
+    "vin": (0, 1, 0),  # Lime
+    "car_plate": (0, 1, 1),  # Cyan
 }
 
 pii_entities_colors_names = {
     "first_name": "Red",
     "last_name": "Pink",
-    "middle_name": "Fuchsia",
     "address": "Green",
     "phone_number": "Blue",
     "email_address": "Yellow",
     "dates": "Purple",
     "credit_card_number": "Turquoise",
     "iban": "Orange",
-    "company_name": "Green",
+    "company_name": "Maroon",
     "signature": "Grey",
-    "full_name": "Dark Purple",
-    "vin": "Bright Green",
+    "full_name": "Fuchsia",
+    "vin": "Lime",
+    "car_plate": "Cyan",
 }
 
 

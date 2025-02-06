@@ -1,82 +1,137 @@
 import os
 import fitz
 import json
-from src.config import pii_classes
 import pybboxes as pbx
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from src.config import pii_entities_colors_names, pii_to_id, id_to_pii
 from sklearn.model_selection import train_test_split
+from src.augmentation import Augmentation
+import cv2
+import numpy as np
+import random
+from collections import defaultdict
+from tqdm import tqdm
 
 
-def create_yolov5_dataset_structure(
-    original_pdf_folder,
-    entities_json_folder,
-    output_folder="dataset",
-    root_folder="yolo-detection",
-    zoom=1.5,
+def return_image_with_bounding_boxes(img_path, bboxes_path, zoom=1.0):
+    img = Image.open(img_path)
+    draw = ImageDraw.Draw(img)
+
+    with open(bboxes_path, "r") as f:
+        bboxes = f.readlines()
+        bboxes = [list(map(float, bbox.strip().split())) for bbox in bboxes]
+        bboxes = [[int(bbox[0])] + bbox[1:] for bbox in bboxes]
+
+    for bbox in bboxes:
+        class_label, coords = bbox[0], bbox[1:]
+        x0, y0, x1, y1 = [coord * zoom for coord in coords]
+        class_name = id_to_pii[class_label]
+        color = pii_entities_colors_names.get(class_name, "black")
+        draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+
+    return img
+
+
+def launch_augmentation(
+        path_to_original_pdfs, path_to_bounding_boxes,
+        path_to_augmented_images, num_of_images=4, zoom_range=(1.15, 1.75)
 ):
-    """
-    Function to convert PDFs to images and their corresponding bounding boxes to YOLO format.
-    """
-
-    custom_data_folder = os.path.join(root_folder, output_folder)
-    os.makedirs(custom_data_folder, exist_ok=True)
-    os.makedirs(os.path.join(custom_data_folder, "images"), exist_ok=True)
-    os.makedirs(os.path.join(custom_data_folder, "labels"), exist_ok=True)
-    # create train, val and test folders
-    for folder in ["train", "val", "test"]:
-        os.makedirs(os.path.join(custom_data_folder, "images", folder), exist_ok=True)
-        os.makedirs(os.path.join(custom_data_folder, "labels", folder), exist_ok=True)
+    augmentation = Augmentation()
+    os.makedirs(path_to_augmented_images, exist_ok=True)
+    os.makedirs(os.path.join(path_to_augmented_images, "images"), exist_ok=True)
+    os.makedirs(os.path.join(path_to_augmented_images, "labels"), exist_ok=True)
     labels = {}
+    mapping = defaultdict(list)
+    all_images = []
+    for pdf_filename in tqdm(os.listdir(path_to_original_pdfs)):
+        if not pdf_filename.endswith(".pdf"):
+            continue
+        pdf_name_without_ext = os.path.splitext(pdf_filename)[0]
+        entity_json_filename = f"{pdf_name_without_ext}_bounding_boxes.json"
+        entity_json_path = os.path.join(path_to_bounding_boxes, entity_json_filename)
 
-    for pdf_filename in os.listdir(original_pdf_folder):
-        if pdf_filename.endswith(".pdf"):
-            pdf_name_without_ext = os.path.splitext(pdf_filename)[0]
-            entity_json_filename = f"{pdf_name_without_ext}_bounding_boxes.json"
-            entity_json_path = os.path.join(entities_json_folder, entity_json_filename)
+        if not os.path.exists(entity_json_path):
+            print(f"Skipping {pdf_filename}: No corresponding entity JSON found.")
+            continue
 
-            if not os.path.exists(entity_json_path):
-                print(f"Skipping {pdf_filename}: No corresponding entity JSON found.")
+        zoom = random.uniform(*zoom_range)
+        pdf_path = os.path.join(path_to_original_pdfs, pdf_filename)
+        doc = fitz.open(pdf_path)
+
+        page = doc.load_page(0)
+        mat = fitz.Matrix(zoom, zoom)
+        page_width, page_height = page.rect.width, page.rect.height
+        pix = page.get_pixmap(matrix=mat)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img_array = np.array(img)
+        bboxes = []
+
+        with open(entity_json_path, "r") as f:
+            entities = json.load(f)
+
+        assert sorted(list(pii_to_id.values())) == list(range(0, len(pii_to_id)))
+
+        for entity in entities:
+            entity_type, entity_value, bbox = entity
+            zoomed_coord = [coord * zoom for coord in bbox]
+            if entity_type not in pii_to_id:
                 continue
+            entity_type_code = pii_to_id[entity_type]
+            bboxes.append([entity_type_code] + zoomed_coord)
 
-            pdf_path = os.path.join(original_pdf_folder, pdf_filename)
-            doc = fitz.open(pdf_path)
+        augmented_images, new_bboxes = augmentation.create_augmented_images(
+            img_array, bboxes=bboxes, num_of_images=num_of_images
+        )
 
-            page = doc.load_page(0)
-            page_width, page_height = page.rect.width, page.rect.height
+        for i, augmented_image in enumerate(augmented_images):
+            all_images.append((f"{pdf_name_without_ext}_{i}.png", augmented_image))
+            mapping[pdf_name_without_ext].append(f"{pdf_name_without_ext}_{i}.png")
 
-            mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
-            labels[pdf_name_without_ext] = {
-                "image": pix,
-                "entities": [],
+        for i in range(len(augmented_images)):
+            labels[f"{pdf_name_without_ext}_{i}"] = {
+                "image": augmented_images[i],
+                "entities": new_bboxes[i]
             }
 
-            with open(entity_json_path, "r") as f:
-                entities = json.load(f)
+        for key in labels:
+            labels[key]["entities"] = list(
+                set(tuple(x) for x in labels[key]["entities"]))
 
-            for entity in entities:
-                entity_type, entity_value, bbox = entity
+    mapping = dict(mapping)
 
-                class_index = pii_to_id[entity_type]
+    for path, image in all_images:
+        cv2.imwrite(os.path.join(path_to_augmented_images, "images", path), image)
 
-                yolo_cor = pbx.convert_bbox(
-                    bbox,
-                    from_type="voc",
-                    to_type="yolo",
-                    image_size=(page_width, page_height),
-                )
-                box_center_x, box_center_y, box_width, box_height = yolo_cor
+    with open(os.path.join(path_to_augmented_images, "mapping.json"), "w") as f:
+        json.dump(mapping, f, indent=4)
 
-                labels[pdf_name_without_ext]["entities"].append(
-                    [class_index, box_center_x, box_center_y, box_width, box_height]
-                )
-            labels[pdf_name_without_ext]["entities"] = list(set(tuple(x) for x in labels[pdf_name_without_ext]["entities"]))
+    for key in labels:
+        label_path = os.path.join(path_to_augmented_images, "labels", f"{key}.txt")
+        with open(label_path, "w") as f:
+            for label in labels[key]["entities"]:
+                f.write(" ".join(map(str, label)) + "\n")
 
-    train, test = train_test_split(list(labels.keys()), test_size=0.3, random_state=42)
-    validation, test = train_test_split(test, test_size=0.5, random_state=42)
 
-    # write train, val and test labels
+def split_yolov5_dataset(
+        path_to_folder,
+        output_folder,
+        train_val_ratio = 0.7,
+        val_test_ratio = 0.9,
+):
+    os.makedirs(output_folder, exist_ok=True)
+    for folder in ["images", "labels"]:
+        os.makedirs(os.path.join(output_folder, folder), exist_ok=True)
+        for split in ["train", "val", "test"]:
+            os.makedirs(os.path.join(output_folder, folder, split))
+
+    with open(os.path.join(path_to_folder, "mapping.json"), "r") as f:
+        mapping = json.load(f)
+
+    all_images = list(mapping.values())
+
+    train, test = train_test_split(all_images, train_size=train_val_ratio, random_state=42)
+    validation, test = train_test_split(test, train_size=val_test_ratio, random_state=42)
+
     """
     dataset/  # This is the 'path' in your custom.yaml
     ├── images/
@@ -98,56 +153,104 @@ def create_yolov5_dataset_structure(
             ├── image102.txt
             └── ...
     """
-    for split, pdfs in zip(["train", "val", "test"], [train, validation, test]):
-        for pdf_name in pdfs:
-            image_path = os.path.join(custom_data_folder, "images", split, f"{pdf_name}.png")
-            labels_path = os.path.join(custom_data_folder, "labels", split, f"{pdf_name}.txt")
+    for split, images in zip(["train", "val", "test"], [train, validation, test]):
+        for image in images:
 
-            labels_list = labels[pdf_name]["entities"]
-            image = labels[pdf_name]["image"]
+            base_name_1 = os.path.basename(image[0]).split(".")[0]
+            base_name_2 = os.path.basename(image[1]).split(".")[0]
 
-            image.save(image_path)
-            with open(labels_path, "w") as f:
-                for label in labels_list:
-                    f.write(" ".join(map(str, label)) + "\n")
+            image_1_path = os.path.join(path_to_folder, "images", f"{base_name_1}.png")
+            image_1_copy_path = os.path.join(output_folder, "images", split, f"{base_name_1}.png")
+            image_2_path = os.path.join(path_to_folder, "images", f"{base_name_2}.png")
+            image_2_copy_path = os.path.join(output_folder, "images", split, f"{base_name_2}.png")
 
+            os.system(f"cp {image_1_path} {image_1_copy_path}")
+            os.system(f"cp {image_2_path} {image_2_copy_path}")
+
+            label_1_path = os.path.join(path_to_folder, "labels", f"{base_name_1}.txt")
+            label_1_copy_path = os.path.join(output_folder, "labels", split, f"{base_name_1}.txt")
+            label_2_path = os.path.join(path_to_folder, "labels", f"{base_name_2}.txt")
+            label_2_copy_path = os.path.join(output_folder, "labels", split, f"{base_name_2}.txt")
+
+            os.system(f"cp {label_1_path} {label_1_copy_path}")
+            os.system(f"cp {label_2_path} {label_2_copy_path}")
     print("Dataset creation complete.")
 
-
-def save_image_with_bounding_boxes_pillow(image_path, label_txt_path, output_path):
-    # Open the image file using PIL
+def save_image_with_bounding_boxes_pillow(
+        image_path, label_txt_path, output_path, reference_labels=None, bbox_format="yolo"
+):
     img = Image.open(image_path)
     img_width, img_height = img.size
-
-    # Create a drawing context
     draw = ImageDraw.Draw(img)
 
-    # Read the label txt file (YOLO format)
+    # Read labels from the label text file
     with open(label_txt_path, "r") as f:
         lines = f.readlines()
 
-    # Convert YOLO bounding boxes to pixel coordinates and draw them
+    # Extract found classes from the label file
+    found_classes = []
     for line in lines:
         values = line.strip().split()
-        class_name = id_to_pii[int(values[0])]
-        color = pii_entities_colors_names[class_name]
+        class_id = int(values[0])
+        found_classes.append(class_id)
+
+        # Convert YOLO coordinates to VOC format
         box_center_x = float(values[1])
         box_center_y = float(values[2])
         box_width = float(values[3])
         box_height = float(values[4])
-
-        # Convert YOLO format to Pascal VOC (x0, y0, x1, y1)
-        bbox_cor = pbx.convert_bbox(
-            (box_center_x, box_center_y, box_width, box_height),
-            from_type="yolo",
-            to_type="voc",
-            image_size=(img_width, img_height),
-        )
-
+        if bbox_format == "yolo":
+            bbox_cor = pbx.convert_bbox(
+                (box_center_x, box_center_y, box_width, box_height),
+                from_type="yolo",
+                to_type="voc",
+                image_size=(img_width, img_height),
+            )
+        else:
+            bbox_cor = (box_center_x, box_center_y, box_width, box_height)
         x0, y0, x1, y1 = bbox_cor
 
-        # Draw rectangle on the image using Pillow
+        # Draw the bounding box
+        class_name = id_to_pii[class_id]
+        color = pii_entities_colors_names[class_name]
         draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
+
+    # Check for missing classes
+    if reference_labels is not None:
+        with open(reference_labels, "r") as ref_file:
+            reference_lines = ref_file.readlines()
+        reference_classes = sorted([int(line.strip().split()[0]) for line in reference_lines])
+        found_classes = sorted(found_classes)
+        for c in found_classes:
+            if c in reference_classes:
+                reference_classes.remove(c)
+        missing_classes = reference_classes
+        # Prepare the text for missing classes
+        if missing_classes:
+            text = "\n".join([f"Missing class: {id_to_pii[class_id]}" for class_id in missing_classes])
+
+            # Load font
+            font = ImageFont.load_default(size=16)
+
+            # Calculate text size using the font
+            text_width, text_height = 250, 250
+
+            # Position the text at the bottom-right corner
+            text_x = img_width - text_width - 10
+            text_y = img_height - text_height - 10
+
+            # Draw the text
+            padding = 5
+            draw.rectangle(
+                [
+                    text_x - padding, text_y - padding,
+                    text_x + text_width + padding, text_y + text_height + padding
+                ],
+                fill="white", outline="black"
+            )
+
+            # Draw the text
+            draw.text((text_x, text_y), text, fill="red", font=font)
 
     # Save the modified image
     img.save(output_path)
