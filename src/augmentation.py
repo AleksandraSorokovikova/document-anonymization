@@ -207,8 +207,8 @@ class Augmentation:
         return int(x_min_new), int(y_min_new), int(x_max_new), int(y_max_new)
 
     @staticmethod
-    def rotation(
-            image: np.ndarray, bboxes: list = None, angle_range: tuple = (-10, 10)
+    def apply_rotation(
+            image: np.ndarray, bboxes: list = None, angle_range: tuple = (-0.7, 0.7)
     ) -> (np.ndarray, list):
         """
         Rotate the image by a random angle (from angle_range) and update bounding boxes if provided.
@@ -222,15 +222,7 @@ class Augmentation:
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
         rotated = cv2.warpAffine(image, M, (w, h), borderValue=(255, 255, 255))
 
-        if bboxes is None:
-            return rotated
-
-        new_bboxes = []
-        for bbox in bboxes:
-            label, text, coords = bbox
-            new_coords = Augmentation.rotate_bbox(coords, angle, (h, w))
-            new_bboxes.append([label, text, new_coords])
-        return rotated, new_bboxes
+        return rotated, bboxes
 
     @staticmethod
     def resize_and_paste(

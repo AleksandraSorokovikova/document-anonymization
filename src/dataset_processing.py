@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 
 def return_image_with_bounding_boxes(img_path, bboxes_path, zoom=1.0):
-    img = Image.open(img_path)
+    img = Image.open(img_path).convert("RGB")
     draw = ImageDraw.Draw(img)
 
     with open(bboxes_path, "r") as f:
@@ -112,10 +112,10 @@ def launch_augmentation(
                 f.write(" ".join(map(str, label)) + "\n")
 
 
-def split_yolov5_dataset(
+def split_yolo_dataset(
         path_to_folder,
         output_folder,
-        train_val_ratio = 0.7,
+        train_val_ratio = 0.8,
         val_test_ratio = 0.9,
 ):
     os.makedirs(output_folder, exist_ok=True)
@@ -127,9 +127,7 @@ def split_yolov5_dataset(
     with open(os.path.join(path_to_folder, "mapping.json"), "r") as f:
         mapping = json.load(f)
 
-    all_images = list(mapping.values())
-
-    train, test = train_test_split(all_images, train_size=train_val_ratio, random_state=42)
+    train, test = train_test_split(list(mapping.values()), train_size=train_val_ratio, random_state=42)
     validation, test = train_test_split(test, train_size=val_test_ratio, random_state=42)
 
     """
@@ -153,48 +151,58 @@ def split_yolov5_dataset(
             ├── image102.txt
             └── ...
     """
-    for split, images in zip(["train", "val", "test"], [train, validation, test]):
-        for image in images:
+    for split, images_split in zip(["train", "val", "test"], [train, validation, test]):
+        for images in tqdm(images_split):
+            if split == "train":
+                images_to_copy = images
+            else:
+                images_to_copy = [random.choice(images)]
 
-            base_name_1 = os.path.basename(image[0]).split(".")[0]
-            base_name_2 = os.path.basename(image[1]).split(".")[0]
+            for image in images_to_copy:
+                image_path = os.path.join(path_to_folder, "images", image)
+                label_path = os.path.join(path_to_folder, "labels", image.replace(".png", ".txt"))
 
-            image_1_path = os.path.join(path_to_folder, "images", f"{base_name_1}.png")
-            image_1_copy_path = os.path.join(output_folder, "images", split, f"{base_name_1}.png")
-            image_2_path = os.path.join(path_to_folder, "images", f"{base_name_2}.png")
-            image_2_copy_path = os.path.join(output_folder, "images", split, f"{base_name_2}.png")
+                img = Image.open(image_path)
+                img_width, img_height = img.size
 
-            os.system(f"cp {image_1_path} {image_1_copy_path}")
-            os.system(f"cp {image_2_path} {image_2_copy_path}")
+                with open(label_path, 'r') as f:
+                    label = f.readlines()
+                    bboxes = [list(map(float, line.strip().split())) for line in label]
+                    bboxes = [[int(cls_id)] + coords for cls_id, *coords in bboxes]
 
-            label_1_path = os.path.join(path_to_folder, "labels", f"{base_name_1}.txt")
-            label_1_copy_path = os.path.join(output_folder, "labels", split, f"{base_name_1}.txt")
-            label_2_path = os.path.join(path_to_folder, "labels", f"{base_name_2}.txt")
-            label_2_copy_path = os.path.join(output_folder, "labels", split, f"{base_name_2}.txt")
+                converted_bboxes = []
+                for bbox in bboxes:
+                    converted_bboxes.append([bbox[0]] + [c for c in pbx.convert_bbox(
+                        (bbox[1], bbox[2], bbox[3], bbox[4]),
+                        from_type="voc",
+                        to_type="yolo",
+                        image_size=(img_width, img_height),
+                    )])
 
-            os.system(f"cp {label_1_path} {label_1_copy_path}")
-            os.system(f"cp {label_2_path} {label_2_copy_path}")
+                with open(os.path.join(output_folder, "labels", split, f"{image.replace('.png', '.txt')}"), "w") as f:
+                    for bbox in converted_bboxes:
+                        f.write(" ".join(map(str, bbox)) + "\n")
+
+                os.system(f"cp {image_path} {os.path.join(output_folder, 'images', split, image)}")
+
     print("Dataset creation complete.")
 
 def save_image_with_bounding_boxes_pillow(
-        image_path, label_txt_path, output_path, reference_labels=None, bbox_format="yolo"
+        image_path, label_txt_path, output_path=None, reference_labels=None, bbox_format="yolo"
 ):
     img = Image.open(image_path)
     img_width, img_height = img.size
     draw = ImageDraw.Draw(img)
 
-    # Read labels from the label text file
     with open(label_txt_path, "r") as f:
         lines = f.readlines()
 
-    # Extract found classes from the label file
     found_classes = []
     for line in lines:
         values = line.strip().split()
         class_id = int(values[0])
         found_classes.append(class_id)
 
-        # Convert YOLO coordinates to VOC format
         box_center_x = float(values[1])
         box_center_y = float(values[2])
         box_width = float(values[3])
@@ -253,4 +261,7 @@ def save_image_with_bounding_boxes_pillow(
             draw.text((text_x, text_y), text, fill="red", font=font)
 
     # Save the modified image
-    img.save(output_path)
+    if output_path:
+        img.save(output_path)
+    else:
+        return img
