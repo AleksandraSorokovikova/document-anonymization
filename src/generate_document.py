@@ -622,6 +622,86 @@ class PIIGenerator:
         )
         return pdf
 
+    @staticmethod
+    def extract_bounding_boxes_with_bio(document, entities):
+        entity_bounding_boxes = []
+        found_entities = []
+        page = document[0]
+        words = page.get_text("words")
+
+        word_index_dict = {}
+
+        for entity, value in entities:
+
+            entity_words = value.split()
+            entity_index = 0
+            entity_temp_boxes = []
+
+            for i, word in enumerate(words):
+
+                if entity in {"first_name", "last_name"}:
+                    if i in word_index_dict:
+                        continue
+                    else:
+                        new_entity = "full_name"
+                else:
+                    new_entity = entity
+
+                if (
+                        fuzz.WRatio(word[4].lower(), entity_words[entity_index].lower()) >= 95
+                        or word[4] == entity_words[entity_index]
+                ):
+
+                    tag = "B-" + new_entity if entity_index == 0 else "I-" + new_entity
+                    entity_temp_boxes.append(
+                        (i, (new_entity, word[4], tag, (word[0], word[1], word[2], word[3])))
+                    )
+                    entity_index += 1
+
+                    if entity_index == len(entity_words):
+                        for j, box in entity_temp_boxes:
+                            entity_bounding_boxes.append(box)
+                            word_index_dict[j] = entity_bounding_boxes[-1]
+
+                        found_entities.append((new_entity, word[4]))
+                        entity_index = 0
+                else:
+                    entity_index = 0
+
+        return list(set(entity_bounding_boxes)), list(set(found_entities)), word_index_dict
+
+    def generate_layoutlm_labels(self, document, entities, signature=None):
+        words, boxes, ner_tags = [], [], []
+        page = document[0]
+        all_words = page.get_text("words")
+
+        entity_bboxes, found_entities, word_index_dict = self.extract_bounding_boxes_with_bio(document, entities)
+
+        for i, doc_word in enumerate(all_words):
+            words.append(doc_word[4])
+            if i in word_index_dict:
+                entity, word, tag, bbox = word_index_dict[i]
+                boxes.append([bbox[0], bbox[1], bbox[2], bbox[3]])
+                ner_tags.append(tag)
+            else:
+                boxes.append([doc_word[0], doc_word[1], doc_word[2], doc_word[3]])
+                ner_tags.append("O")
+
+        if signature:
+            signature_bbox = self.extract_signature_bounding_boxes(document)
+            entity_bboxes.append(
+                ("signature", "[SIGNATURE]", "B-signature", signature_bbox)
+            )
+            words.append("[SIGNATURE]")
+            boxes.append(signature_bbox)
+            ner_tags.append("B-signature")
+
+        return {
+            "tokens": words,
+            "bboxes": boxes,
+            "ner_tags": ner_tags
+        }
+
     def create_pdf_from_latex(self, latex_content, file_name):
 
         self.compile_latex(latex_content, os.path.join(self.output_folder, "original"), file_name)
@@ -668,6 +748,8 @@ class PIIGenerator:
         bounding_boxes, found_entities = self.extract_bounding_boxes(
             pdf, random_pii_values
         )
+        layoutlm_labels = self.generate_layoutlm_labels(pdf, random_pii_values, document_meta_info["signature"])
+
         if document_meta_info["signature"] is not None:
             signature_bbox = self.extract_signature_bounding_boxes(pdf)
             random_pii_values.append(("signature", document_meta_info["signature"]))
@@ -695,6 +777,17 @@ class PIIGenerator:
                 encoding="utf-8",
         ) as f:
             json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
+
+        with open(
+                os.path.join(
+                    self.output_folder,
+                    "layoutlm_labels",
+                    f"{file_name.replace('.pdf', '_layoutlm_labels.json')}",
+                ),
+                "w",
+                encoding="utf-8",
+        ) as f:
+            json.dump(layoutlm_labels, f, indent=4, ensure_ascii=False)
 
         final_documents = {
                 "file_name": file_name,

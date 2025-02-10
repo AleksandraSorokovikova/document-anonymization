@@ -25,7 +25,7 @@ def return_image_with_bounding_boxes(img_path, bboxes_path, zoom=1.0):
     for bbox in bboxes:
         class_label, coords = bbox[0], bbox[1:]
         x0, y0, x1, y1 = [coord * zoom for coord in coords]
-        class_name = id_to_pii[class_label]
+        class_name = id_to_pii.get(class_label, -1)
         color = pii_entities_colors_names.get(class_name, "black")
         draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
 
@@ -112,11 +112,34 @@ def launch_augmentation(
                 f.write(" ".join(map(str, label)) + "\n")
 
 
+def split_by_layout(mapping, train_val_ratio, val_test_ratio):
+    docs = ["_".join(im.split("_")[:-1]) for im in mapping]
+    layouts = set(docs)
+
+    train, val = train_test_split(list(layouts), train_size=train_val_ratio, random_state=42)
+
+    train_images = []
+    val_images = []
+
+
+    for image in mapping:
+        image_layout = "_".join(image.split("_")[:-1])
+        if image_layout in train:
+            train_images.append(mapping[image])
+        elif image_layout in val:
+            val_images.append([random.choice(mapping[image])])
+
+    val_images, test_images = train_test_split(val_images, train_size=val_test_ratio, random_state=42)
+
+    return train_images, val_images, test_images
+
+
 def split_yolo_dataset(
         path_to_folder,
         output_folder,
         train_val_ratio = 0.8,
         val_test_ratio = 0.9,
+        split_strategy="random"
 ):
     os.makedirs(output_folder, exist_ok=True)
     for folder in ["images", "labels"]:
@@ -127,8 +150,13 @@ def split_yolo_dataset(
     with open(os.path.join(path_to_folder, "mapping.json"), "r") as f:
         mapping = json.load(f)
 
-    train, test = train_test_split(list(mapping.values()), train_size=train_val_ratio, random_state=42)
-    validation, test = train_test_split(test, train_size=val_test_ratio, random_state=42)
+    if split_strategy == "random":
+        train, test = train_test_split(list(mapping.values()), train_size=train_val_ratio, random_state=42)
+        validation, test = train_test_split(test, train_size=val_test_ratio, random_state=42)
+    elif split_strategy == "layout":
+        train, validation, test = split_by_layout(mapping, train_val_ratio, val_test_ratio)
+    else:
+        raise ValueError("Invalid split strategy. Choose between 'random' and 'layout'.")
 
     """
     dataset/  # This is the 'path' in your custom.yaml
