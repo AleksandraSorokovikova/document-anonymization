@@ -11,7 +11,7 @@ python_Levenshtein==0.26.0
 matplotlib==3.9.2
 pybboxes==0.1.6
 scikit-learn==1.5.2
-ultralytics==8.2.100
+ultralytics
 comet-ml==3.46.0
 datasets==3.0.1
 PyLaTeX==1.4.2
@@ -19,3 +19,6 @@ opencv-python~=4.10.0.84
 numpy~=1.26.4
 tqdm~=4.66.5
 pillow~=10.4.0
+wandb
+torch
+transformers

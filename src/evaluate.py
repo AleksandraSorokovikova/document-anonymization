@@ -3,6 +3,7 @@ import os
 import time
 import numpy as np
 import pandas as pd
+import pybboxes as pbx
 from collections import defaultdict
 from PIL import Image
 from src.dataset_processing import return_image_with_bounding_boxes
@@ -123,33 +124,37 @@ def create_image_view(image_path, ground_truth_path, predictions_path, output_pa
 
 
 def evaluate_all_labels(
-        ground_truth_dir: str,
-        prediction_dir: str,
+        ground_truth_labels_dir: str,
+        prediction_labels_dir: str,
+        images_dir: str,
         iou_threshold: float = 0.5,
-        class_names=None,
-        create_image_views = False
+        create_image_views = False,
+        image_views_dir = None
 ):
     all_ground_truths = []
     all_predictions = []
     class_image_count = defaultdict(int)
     class_instance_count = defaultdict(int)
 
-    if create_image_views:
-        os.makedirs(os.path.join(prediction_dir, "image_views"), exist_ok=True)
+    class_names = id_to_pii
 
-    gt_files = sorted(os.listdir(os.path.join(ground_truth_dir, "labels")))
+    if create_image_views:
+        image_views_dir = image_views_dir or "image_views"
+        os.makedirs(image_views_dir, exist_ok=True)
+
+    gt_files = sorted(os.listdir(ground_truth_labels_dir))
     gt_files = [f for f in gt_files if f.endswith(".txt")]
     n_images = 0
 
     for filename in gt_files:
-        gt_path = os.path.join(ground_truth_dir, "labels", filename)
-        pred_path = os.path.join(prediction_dir, "labels", filename)
+        gt_path = os.path.join(ground_truth_labels_dir, filename)
+        pred_path = os.path.join(prediction_labels_dir, filename)
         if not os.path.isfile(pred_path):
             continue
 
         if create_image_views:
-            image_path = os.path.join(ground_truth_dir, "images", filename.replace(".txt", ".png"))
-            output_path = os.path.join(prediction_dir, "image_views", filename.replace(".txt", ".png"))
+            image_path = os.path.join(images_dir, filename.replace(".txt", ".png"))
+            output_path = os.path.join(image_views_dir, filename.replace(".txt", ".png"))
             create_image_view(image_path, gt_path, pred_path, output_path)
 
         ground_truths, predictions = read_files(gt_path, pred_path)

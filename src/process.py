@@ -157,13 +157,16 @@ def rotate_benchmark(path_to_images):
             os.remove(output_path)
 
 
-def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str):
-    os.makedirs(os.path.join(root_dir, "labels"), exist_ok=True)
+def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str, new_labels_dir: str = "labels", images_dir: str = None):
+    if not images_dir:
+        images_dir = os.path.join(root_dir, "images")
+
+    os.makedirs(new_labels_dir, exist_ok=True)
     labels = os.listdir(os.path.join(root_dir, raw_labels_path))
     labels = [label for label in labels if label.endswith(".txt")]
     labels = sorted(labels)
 
-    images = os.listdir(os.path.join(root_dir, "images"))
+    images = os.listdir(images_dir)
     images = [img for img in images if img.endswith(".jpg") or img.endswith(".png")]
     images = sorted(images)
 
@@ -178,7 +181,7 @@ def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str):
 
         txt_labels = []
         for line in lines:
-            image_opened = Image.open(os.path.join(root_dir, "images", image))
+            image_opened = Image.open(os.path.join(images_dir, image))
             img_width, img_height = image_opened.size
             class_id = line[0]
             box_center_x = line[1]
@@ -196,7 +199,7 @@ def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str):
 
 
     for label in all_labels:
-        with open(os.path.join(root_dir, "labels", label), "w") as f:
+        with open(os.path.join(new_labels_dir, label), "w") as f:
             f.write(all_labels[label])
 
 
