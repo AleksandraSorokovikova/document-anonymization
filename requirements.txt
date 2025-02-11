@@ -15,3 +15,7 @@ ultralytics==8.2.100
 comet-ml==3.46.0
 datasets==3.0.1
 PyLaTeX==1.4.2
+opencv-python~=4.10.0.84
+numpy~=1.26.4
+tqdm~=4.66.5
+pillow~=10.4.0

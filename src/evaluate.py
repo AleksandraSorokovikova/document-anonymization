@@ -1,5 +1,7 @@
 from src.config import *
 import os
+import time
+import numpy as np
 import pandas as pd
 from collections import defaultdict
 from PIL import Image
@@ -168,7 +170,7 @@ def evaluate_all_labels(
         all_ground_truths,
         iou_threshold=iou_threshold
     )
-    rows = []
+    rows = {}
     class_ids = set(metrics_per_class.keys()) | set(class_instance_count.keys())
     sorted_class_ids = sorted(list(class_ids))
 
@@ -177,6 +179,8 @@ def evaluate_all_labels(
         precision = met.get('precision', 0.0)
         recall = met.get('recall', 0.0)
         ap = met.get('AP', 0.0)
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
         if class_names:
             class_label = class_names[cls_id] if cls_id in class_names else str(cls_id)
         else:
@@ -184,15 +188,14 @@ def evaluate_all_labels(
         images_for_class = class_image_count.get(cls_id, 0)
         instances_for_class = class_instance_count.get(cls_id, 0)
 
-        row = {
-            "Class": class_label,
+        rows[class_label] = {
             "Images": images_for_class,
             "Instances": instances_for_class,
             "Precision": precision,
             "Recall": recall,
+            "F1": f1,
             "mAP50": ap,
         }
-        rows.append(row)
 
     total_TP = sum(met.get("TP", 0) for met in metrics_per_class.values())
     total_FP = sum(met.get("FP", 0) for met in metrics_per_class.values())
@@ -200,18 +203,18 @@ def evaluate_all_labels(
 
     global_precision = total_TP / (total_TP + total_FP) if (total_TP + total_FP) > 0 else 0.0
     global_recall = total_TP / (total_TP + total_FN) if (total_TP + total_FN) > 0 else 0.0
+    global_f1 = 2 * global_precision * global_recall / (global_precision + global_recall) if (global_precision + global_recall) > 0 else 0.0
 
-    rows.append({
+    rows["all"] = {
         "Class": "all",
         "Images": n_images,
         "Instances": sum(class_instance_count.values()),
         "Precision": global_precision,
         "Recall": global_recall,
+        "F1": global_f1,
         "mAP50": mAP_50,
-    })
-
-    df = pd.DataFrame(rows)
-    return df
+    }
+    return rows
 
 
 def create_markdown_report(df_results, model_metadata, output_path):
@@ -232,13 +235,34 @@ def create_markdown_report(df_results, model_metadata, output_path):
         f.write(text)
 
 
-if __name__ == "__main__":
-    df_results = evaluate_all_labels(
-        "benchmark_dataset",
-        "predictions/yolo",
-        iou_threshold=0.5,
-        class_names=id_to_pii,
-        create_image_views=True
-    )
-    model_metadata = "Model: YOLOv10-Document-Layout-Analysis\n\nImage size: 960x960\n\nEpochs: 100\n\nDataset size: 2k images\n\n"
-    create_markdown_report(df_results, model_metadata, "benchmark_evaluation.md")
+def measure_inference_time(model, test_images):
+    """
+    Измеряет среднее время инференса на одно изображение.
+
+    :param model: Модель (например, YOLO, LayoutLM, DETR)
+    :param test_images: Список изображений для инференса
+    :return: Среднее время инференса (в секундах)
+    """
+    times = []
+
+    for img in test_images:
+        start_time = time.perf_counter()  # Засекаем время
+        _ = model.predict(img)  # Запускаем инференс
+        end_time = time.perf_counter()  # Фиксируем время
+
+        times.append(end_time - start_time)
+
+    avg_inference_time = np.mean(times)
+    return avg_inference_time
+
+
+# if __name__ == "__main__":
+#     df_results = evaluate_all_labels(
+#         "benchmark_dataset",
+#         "predictions/yolo",
+#         iou_threshold=0.5,
+#         class_names=id_to_pii,
+#         create_image_views=True
+#     )
+#     model_metadata = "Model: YOLOv10-Document-Layout-Analysis\n\nImage size: 960x960\n\nEpochs: 100\n\nDataset size: 2k images\n\n"
+#     create_markdown_report(df_results, model_metadata, "benchmark_evaluation.md")

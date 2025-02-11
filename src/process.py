@@ -202,4 +202,4 @@ def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str):
 
 if __name__ == "__main__":
     # rotate_benchmark("benchmark_dataset/images")
-    convert_yolo_to_predictions("predictions/yolo", "labels_raw")
+    convert_yolo_to_predictions("../evaluation/predictions/yolo", "labels_raw")
