@@ -19,6 +19,9 @@ opencv-python~=4.10.0.84
 numpy~=1.26.4
 tqdm~=4.66.5
 pillow~=10.4.0
-wandb
+wandb~=0.19.6
 torch
 transformers
+scipy~=1.14.1
+pandas~=2.2.3
+groq~=0.18.0

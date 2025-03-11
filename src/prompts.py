@@ -218,6 +218,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
 
 3. **Content Embedding:**
     - You must choose which PII entities to embed in the document based on the provided document structure. You don't need to embed all PII entities in the document if they are not required within the layout.
+    - **When embedding PII entities, you should distribute them uniformly across the document to ensure a diverse appearance. Make sure that you located 1/3 of them in the bottom part of the document, 1/3 in the middle, and other 1/3 in the top part. Also, you must place PII entities on the left, right, and center parts of the document. If needed, change the text alignment.**
     - YOU MUST NOT CHANGE EXISTING PII ENTITIES, namely, add extra spaces and other symbols to the provided PII data, change date formats, change phone number/credit card formats, or modify the provided PII data in any way.
     - YOU MUST NOT DIVIDE PII DATA INTO MULTIPLE PARTS AND EMBED THEM SEPARATELY, namely splitting a phone number into area code and number, or separating a date into day, month, and year, or split addresses and put town os street separately.
     - Ensure that all chosen PII entities are embedded within the HTML content and placed in appropriate sections (e.g., full name in the full name field, address in the address field).
@@ -231,6 +232,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     - **Sections:** The provided sections in Sections are not exhaustive; you may include additional sections if needed and may exclude some if they are not relevant.
     - **Headers:** Use the provided header elements such as document titles, dates, or section headers. You are also not limited to these headers; you may include additional headers if needed or exclude some if they are not relevant.
     You MUST NOT put the names of the sections or headers in the document; only the content.
+    **You should use different alignment for different sections of the document (including left, right, and central alignment). Use different font sizes and styles where appropriate. **
     
 5. Signatures insertion:
     - If the generated document requires a signature, you must place in the HTML file the path to signature image in the corresponding field (in tag `img` with width="200" and height="100").
@@ -307,6 +309,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
 
 3. **Content Embedding:**
     - You must choose which PII entities to embed in the document based on the provided layout description. You don't need to embed all PII entities in the document, if they are not required within the layout.
+    - **When embedding PII entities, you should distribute them uniformly across the document to ensure a diverse appearance. Make sure that you located 1/3 of them in the bottom part of the document, 1/3 in the middle, and other 1/3 in the top part. Also, you must place PII entities on the left, right, and center parts of the document. If needed, change the text alignment.**
     - YOU MUST NOT CHANGE EXISTING PII ENTITIES, namely, add extra spaces and other symbols to the provided PII data, change date formats, change phone number/credit card formats, or modify the provided PII data in any way.
     - YOU MUST NOT DIVIDE PII DATA INTO MULTIPLE PARTS AND EMBED THEM SEPARATELY, namely splitting addresses and put town or street separately, or splitting a phone number into area code and number, or separating a date into day, month, and year.
     - Ensure that all chosen PII entities are embedded within the LaTeX content and placed in appropriate sections (e.g., full name in the full name field, address in the address field).
@@ -320,6 +323,7 @@ You will be provided with a list of Personal Identifiable Information (PII) enti
     - You must add ALL layout components described in the **Document Layout Description** section.
     - The document structure should be consistent with the provided layout and sections.
     - You MUST NOT put the names of the sections or headers in the document; only the content.
+    - **You should use different alignment for different sections of the document (including left, right, and central alignment). Use different font sizes and styles where appropriate.**
 
 5. **Signatures insertion:**
     - If the generated document requires a signature, you must place in the LaTeX file the path to signature image in the corresponding field (in tag `includegraphics` with width="200" and height="100").
@@ -1385,3 +1389,123 @@ invoice_template_plain = """
 The document layout is structured as an invoice with clear sections for company, customer, and payment details.
 The document contains approximately 200-300 words and focuses on numeric values in the itemized table.
 """
+
+
+DIVERSIFY_HTML_DOCUMENT_SYSTEM_PROMPT = """
+You are provided with HTML text which forms a document and a list of PII entities which are embedded in this document. 
+There is a problem that these PII entities are concentrated in one area, so your task is to distribute them uniformly throughout the document by changing HTML and text (but not the PII entities).
+
+The provided PII entities are confidential. And if many of them are located close to each other, they can leak. If the PII entities are leaked, the company will have to pay a fine of 100,000 dollars, and it will be you fault.
+That's why you must separate them from each other and distribute them throughout the document.
+
+How to identify items which are located close to each other and should be separated:
+- If they are in the same section (column of the table, paragraph, etc.).
+- If the are listed line by line.
+- If there are only one-two lines of text between them.
+
+The HTML example of close located PII entities:
+```html
+<div class="section">
+            <strong>Account Holder:</strong> Some name<br>
+            <strong>Address:</strong> Some address<br>
+            <strong>Phone:</strong> Some phone<br>
+            <strong>Email:</strong> Some email<br>
+</div>
+<div class="section">
+            <strong>Account Holder:</strong> Another name<br>
+            <strong>Address:</strong> Another address<br>
+            <strong>Phone:</strong> Another phone<br>
+            <strong>Email:</strong> Another email<br>
+</div>
+```
+
+To fix the example above, you should split the sections, add extra text, and change the section itself. But you must not change the PII entities.
+Usually, most of the PII are located on the top left corner of the document, so you should move them to the bottom, middle, and top parts of the document.
+
+Rules you **MUST** follow:
+1. When changing the location of PII entities, make sure that you located 1/3 of them in the bottom part of the document, 1/3 in the middle, and other 1/3 in the top part. To locate entities in different parts, you should add new sections or text between the existing ones. Prioritize the bottom part of the document.
+2. You should create new sections or text if it's needed to place the PII entities in different parts of the document.
+3. Locate some of the entities on the right side of the document. For some parts of the text you must change the alignment to the right or make central alignment.
+4. DO NOT highlight the provided PII entities with bold, italic, underline, or any other formatting if they were not highlighted in the original document.
+5. You can also add extra spaces between text and the PII entity (but do not change the entity itself).
+6. Change font size of some parts of the document to make it more diverse.
+7. Change sections of the document to make it more diverse. For example, add empty sections in order to place text and PII entities in the very bottom of the document, but the document still should fit in one PDF A4 pages.
+8. Divide the sections with a huge concentration of PII entities and distribute these PII throughout the text.
+9. DO NOT CHANGE THE PII, you must leave them in their original format.
+10. You must ensure that the PII entities are not lost.
+11. If the document contains signature, place it in a random place (at the top, in the middle or at the bottom).
+
+I'll give you 200 dollars if the PII are indeed located in all parts of the document. Otherwise, I won't pay you.
+
+YOUR OUTPUT SHOULD CONTAIN ONLY HTML TEXT. DO NOT LEAVE ANY COMMENTS OR ADDITIONAL INFORMATION IN THE OUTPUT.
+"""
+
+DIVERSIFY_HTML_DOCUMENT_USER_PROMPT = """
+HTML text:
+```html
+{0}
+```
+---   
+PII entities:
+{1}
+""".format
+
+
+DIVERSIFY_LATEX_DOCUMENT_SYSTEM_PROMPT = """
+You are provided with LaTex text which forms a document and a list of PII entities which are embedded in this document. 
+There is a problem that these PII entities are concentrated in one area, so your task is to distribute them uniformly throughout the document by changing HTML and text (but not the PII entities).
+
+The provided PII entities are confidential. And if many of them are located close to each other, they can leak. If the PII entities are leaked, the company will have to pay a fine of 100,000 dollars, and it will be you fault.
+That's why you must separate them from each other and distribute them throughout the document.
+
+How to identify items which are located close to each other and should be separated:
+- If they are in the same section (column of the table, paragraph, etc.).
+- If the are listed line by line.
+- If there are only one-two lines of text between them.
+
+The LaTex example of close located PII entities:
+```latex
+\begin{flushleft}
+Order Number: 12345 \\
+Client: \textbf{Leffler, Nola} \\
+Address: 9 ISKRATEL STREET, LJUBLJANA, 1000, SLOVENIA \\
+Phone: \textit{0513-29004705}
+\end{flushleft}
+
+\begin{flushright}
+Date: \textbf{July 31, 2020} \\
+Company: \textit{Hessel Group} \\
+Contact: customer.care@ecommerce.jp
+\end{flushright}
+```
+
+To fix the example above, you should split the sections, add extra text, and change the section itself. But you must not change the PII entities.
+Usually, most of the PII are located on the top left corner of the document, so you should move them to the bottom, middle, and top parts of the document.
+
+Rules you **MUST** follow:
+1. When changing the location of PII entities, make sure that you located 1/3 of them in the bottom part of the document, 1/3 in the middle, and other 1/3 in the top part. To locate entities in different parts, you should add new sections or text between the existing ones. Prioritize the bottom part of the document.
+2. You should create new sections or text if it's needed to place the PII entities in different parts of the document.
+3. Locate some of the entities on the right side of the document. For some parts of the text you must change the alignment to the right or make central alignment.
+4. DO NOT highlight the provided PII entities with bold, italic, underline, or any other formatting if they were not highlighted in the original document.
+5. You can also add extra spaces between text and the PII entity (but do not change the entity itself).
+6. Change font size of some parts of the document to make it more diverse.
+7. Change sections of the document to make it more diverse. For example, add empty sections in order to place text and PII entities in the very bottom of the document, but the document still should fit in one PDF A4 pages.
+8. Divide the sections with a huge concentration of PII entities and distribute these PII throughout the text.
+9. DO NOT CHANGE THE PII, you must leave them in their original format.
+10. You must ensure that the PII entities are not lost.
+11. If the document contains signature, place it in a random place (at the top, in the middle or at the bottom).
+
+I'll give you 200 dollars if the PII are indeed located in all parts of the document. Otherwise, I won't pay you.
+
+YOUR OUTPUT SHOULD CONTAIN ONLY LATEX TEXT. DO NOT LEAVE ANY COMMENTS OR ADDITIONAL INFORMATION IN THE OUTPUT.
+"""
+
+DIVERSIFY_LATEX_DOCUMENT_USER_PROMPT = """
+LATEX text:
+```latex
+{0}
+```
+---   
+PII entities:
+{1}
+""".format

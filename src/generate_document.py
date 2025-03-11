@@ -8,6 +8,8 @@ import pickle
 from datetime import datetime
 from fuzzywuzzy import fuzz
 import pdfkit
+from openai import OpenAI
+from groq import Groq
 from src.config import (
     pii_classes,
     document_types,
@@ -27,7 +29,11 @@ from src.prompts import (
     GENERATE_LATEX_CONTENT_SYSTEM_PROMPT,
     GENERATE_LATEX_CONTENT_USER_PROMPT,
     GENERATE_LATEX_FROM_PICTURE_AND_PII_SYSTEM_PROMPT,
-    GENERATE_LATEX_FROM_PICTURE_AND_PII_USER_PROMPT
+    GENERATE_LATEX_FROM_PICTURE_AND_PII_USER_PROMPT,
+    DIVERSIFY_HTML_DOCUMENT_SYSTEM_PROMPT,
+    DIVERSIFY_HTML_DOCUMENT_USER_PROMPT,
+    DIVERSIFY_LATEX_DOCUMENT_SYSTEM_PROMPT,
+    DIVERSIFY_LATEX_DOCUMENT_USER_PROMPT,
 )
 import os
 from collections import defaultdict
@@ -136,9 +142,39 @@ class PIIGenerator:
             path_to_pii_values="pii_values.json",
             number_of_entities=None,
             generate_new=False,
+            provider="openai",
     ):
-        self.client = openai.Client()
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        if provider == "openai":
+
+            self.client = openai.Client()
+            self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
+            self.params = {
+                "max_tokens": 4096,
+                "n": 1,
+            }
+        elif provider == "groq":
+            self.client = Groq()
+            self.model = os.getenv("GROQ_MODEL", "qwen-2.5-32b")
+            self.params = {
+                "max_completion_tokens" : 4096,
+                "top_p": 0.95,
+                "stream": False,
+                "stop": None,
+            }
+        elif provider == "aiml":
+            self.client = OpenAI(
+                base_url="https://api.aimlapi.com/v1",
+                api_key=os.getenv("AIML_API_KEY"),
+            )
+            self.model = os.getenv("AIML_MODEL", "qwen-plus")
+            self.params = {
+                "max_tokens": 4096,
+                "stop": None,
+            }
+        else:
+            raise ValueError("Provider should be either 'openai', 'groq', or 'aiml'")
+
+        self.provider = provider
         self.path_to_pii_values = path_to_pii_values
         self.pii_classes = pii_classes
         self.pii_entities = [pii["class"] for pii in self.pii_classes]
@@ -163,6 +199,13 @@ class PIIGenerator:
         self.documents = []
         self.create_directories()
 
+        with open(f"{output_folder}/documents.json", "r") as f:
+            self.existing_documents = json.load(f)
+
+        self.existing_document_dict = {}
+        for doc in self.existing_documents:
+            self.existing_document_dict[doc["file_name"]] = doc
+
     def create_directories(self):
         for folder in ["original", "annotated", "entities", "html", "latex"]:
             if not os.path.exists(os.path.join(self.output_folder, folder)):
@@ -184,16 +227,21 @@ class PIIGenerator:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            max_tokens=3000,
-            n=1,
             temperature=temp,
+            **self.params
         )
         message = response.choices[0].message.content.strip()
         if mes_type=="json":
             return json.loads(message.replace("```json", "").replace("```", ""))
         elif mes_type=="html":
+            content = re.findall(r"```html\n(.*?)\n```", message, re.DOTALL)
+            if len(content) == 1:
+                return content[0]
             return message.replace("```html", "").replace("```", "")
         elif mes_type=="latex":
+            content = re.findall(r"```latex\n(.*?)\n```", message, re.DOTALL)
+            if len(content) == 1:
+                return content[0]
             return message.replace("```latex", "").replace("```", "")
         else:
             return message
@@ -521,7 +569,7 @@ class PIIGenerator:
         for entity, value, inst in bounding_boxes:
             rect = fitz.Rect(inst[0], inst[1], inst[2], inst[3])
             document_page.draw_rect(
-                rect, color=pii_entities_colors[entity], overlay=True, width=1
+                rect, color=pii_entities_colors.get(entity, (0, 0, 0)), overlay=True, width=1
             )
 
     @staticmethod
@@ -592,15 +640,17 @@ class PIIGenerator:
         )
         return latex_content
 
-    def create_pdf_from_html(self, html_content, file_name):
+    def create_pdf_from_html(self, html_content, file_name, output_folder=None):
 
+        if not output_folder:
+            output_folder = self.output_folder
         while True:
             pdfkit.from_string(
                 html_content,
-                os.path.join(self.output_folder, "original", file_name),
+                os.path.join(output_folder, "original", file_name),
                 options={"enable-local-file-access": ""},
             )
-            pdf = fitz.open(os.path.join(self.output_folder, "original", file_name))
+            pdf = fitz.open(os.path.join(output_folder, "original", file_name))
             number_of_pages = pdf.page_count
             if number_of_pages > 1:
                 html_content = self.adjust_html_content(html_content)
@@ -609,14 +659,14 @@ class PIIGenerator:
 
         with open(
                 os.path.join(
-                    self.output_folder, "html", file_name.replace(".pdf", ".html")
+                    output_folder, "html", file_name.replace(".pdf", ".html")
                 ),
                 "w",
         ) as f:
             f.write(html_content)
 
         pdf.save(
-            os.path.join(self.output_folder, "original", file_name),
+            os.path.join(output_folder, "original", file_name),
             incremental=True,
             encryption=fitz.PDF_ENCRYPT_KEEP,
         )
@@ -702,26 +752,86 @@ class PIIGenerator:
             "ner_tags": ner_tags
         }
 
-    def create_pdf_from_latex(self, latex_content, file_name):
+    @staticmethod
+    def random_change_geometry(latex_content, max_y=None):
+        top = None
+        bottom = None
+        if max_y:
+            space_between_y_and_bottom = 820 - max_y
+            remain_cm = space_between_y_and_bottom / 28
+            top = random.uniform(0.3, remain_cm)
+            bottom = 0.1
 
-        self.compile_latex(latex_content, os.path.join(self.output_folder, "original"), file_name)
-        pdf = fitz.open(os.path.join(self.output_folder, "original", file_name))
+        left = random.uniform(0.3, 3.5)
+        right = random.uniform(0.3, 3.5)
+        top = random.uniform(0.3, 3.5) if not top else top
+        bottom = random.uniform(0.3, 3.5) if not bottom else bottom
+
+        left = round(left, 3)
+        right = round(right, 3)
+        top = round(top, 3)
+        bottom = round(bottom, 3)
+
+        font_size = random.randint(9, 13)
+
+        latex_content = latex_content.replace(
+            "usepackage[a4paper, margin=0.6in]",
+            f"usepackage[a4paper, left={left}cm, right={right}cm, top={top}cm, bottom={bottom}cm]"
+        )
+
+        latex_content = latex_content.replace(
+            "documentclass[10pt]",
+            f"documentclass[{font_size}]"
+        )
+        return latex_content
+
+    def get_max_y(self, latex_content, file_name):
+        self.compile_latex(
+            latex_content, os.path.join(self.output_folder, "original"), f"{file_name}_temp.pdf"
+        )
+        old_pdf = fitz.open(os.path.join(self.output_folder, "original", f"{file_name}_temp.pdf"))
+        if old_pdf.page_count < 1:
+            os.remove(os.path.join(self.output_folder, "original", f"{file_name}_temp.pdf"))
+            raise Exception("Empty PDF")
+        page = old_pdf[0]
+        blocks = page.get_text("blocks")
+        max_block = blocks[-1] if blocks[-1][4] != '1\n' else blocks[-2]
+        max_y = max_block[3]
+        old_pdf.close()
+        os.remove(os.path.join(self.output_folder, "original", f"{file_name}_temp.pdf"))
+        return max_y
+
+    def create_pdf_from_latex(
+            self, latex_content, file_name, output_folder=None, change_geometry=True, find_max_y=True
+    ):
+
+        latex_content = "\\thispagestyle{empty}\n" + latex_content
+
+        max_y = self.get_max_y(latex_content, file_name) if not find_max_y else None
+
+        if not output_folder:
+            output_folder = self.output_folder
+
+        if change_geometry:
+            latex_content = self.random_change_geometry(latex_content, max_y=max_y)
+
+        self.compile_latex(latex_content, os.path.join(output_folder, "original"), file_name)
+        pdf = fitz.open(os.path.join(output_folder, "original", file_name))
         if pdf.page_count == 2:
             pdf.delete_page(1)
-            pdf.save(os.path.join(self.output_folder, "original", file_name))
         elif pdf.page_count > 2:
             raise ValueError("Latex document has more than 1 page")
 
         with open(
                 os.path.join(
-                    self.output_folder, "latex", file_name.replace(".pdf", ".tex")
+                    output_folder, "latex", file_name.replace(".pdf", ".tex")
                 ),
                 "w",
         ) as f:
             f.write(latex_content)
 
         pdf.save(
-            os.path.join(self.output_folder, "original", file_name),
+            os.path.join(output_folder, "original", file_name),
             incremental=True,
             encryption=fitz.PDF_ENCRYPT_KEEP,
         )
@@ -741,7 +851,12 @@ class PIIGenerator:
             )
             document_type = document_meta_info["document_type"]
             file_name = f"{document_type.replace(' ', '')}_{str(uuid4())[:7]}.pdf"
-            pdf = self.create_pdf_from_latex(latex_content, file_name)
+            pdf = self.create_pdf_from_latex(
+                latex_content,
+                file_name,
+                change_geometry=True,
+                find_max_y=True
+            )
         else:
             raise ValueError("Format should be either 'html' or 'latex'")
 
@@ -765,6 +880,8 @@ class PIIGenerator:
                 "annotated",
                 f"{file_name.replace('.pdf', '_annotated.pdf')}",
             ),
+            incremental=True,
+            encryption=fitz.PDF_ENCRYPT_KEEP
         )
 
         with open(
@@ -800,17 +917,120 @@ class PIIGenerator:
         if path:
             self.append_document_json(final_documents, path)
 
-    def append_document_json(self, document, path):
+    def diversify_document(self, document_name, output_folder="output_diversified"):
+
+        os.makedirs(output_folder, exist_ok=True)
+        os.makedirs(os.path.join(output_folder, "original"), exist_ok=True)
+        os.makedirs(os.path.join(output_folder, "annotated"), exist_ok=True)
+        os.makedirs(os.path.join(output_folder, "entities"), exist_ok=True)
+        os.makedirs(os.path.join(output_folder, "layoutlm_labels"), exist_ok=True)
+        os.makedirs(os.path.join(output_folder, "html"), exist_ok=True)
+        os.makedirs(os.path.join(output_folder, "latex"), exist_ok=True)
+        doc = self.existing_document_dict[f"{document_name}.pdf"]
+        doc_format = doc["document_meta_info"]["doc_format"]
+        extension = "html" if doc_format == "html" else "tex"
+
+        with open(f"{self.output_folder}/{doc_format}/{document_name}.{extension}", "r") as f:
+            content = f.read()
+        with open(f"{self.output_folder}/entities/{document_name}_bounding_boxes.json", "r") as f:
+            entities = json.load(f)
+        pii = [en[1] for en in entities if en[0] != "signature"]
+        random_pii_values = doc["random_pii_values"]
+
+        system_prompt = DIVERSIFY_HTML_DOCUMENT_SYSTEM_PROMPT if doc_format == "html" else DIVERSIFY_LATEX_DOCUMENT_SYSTEM_PROMPT
+        user_prompt = DIVERSIFY_HTML_DOCUMENT_USER_PROMPT if doc_format == "html" else DIVERSIFY_LATEX_DOCUMENT_USER_PROMPT
+
+        new_document = self.generate(
+            system_prompt,
+            user_prompt(content, pii),
+            mes_type=doc_format,
+            temp=0.6
+        )
+
+        if doc_format == "html":
+            pdf = self.create_pdf_from_html(
+                new_document, f"{document_name}.pdf", output_folder=output_folder
+            )
+        else:
+            pdf = self.create_pdf_from_latex(
+                new_document,
+                f"{document_name}.pdf",
+                output_folder=output_folder,
+                change_geometry=True,
+                find_max_y=True
+            )
+
+        bounding_boxes, found_entities = self.extract_bounding_boxes(
+            pdf, random_pii_values
+        )
+        layoutlm_labels = self.generate_layoutlm_labels(pdf, random_pii_values, doc["document_meta_info"]["signature"])
+
+        if doc["document_meta_info"]["signature"] is not None:
+            signature_bbox = self.extract_signature_bounding_boxes(pdf)
+            if signature_bbox:
+                bounding_boxes.append(
+                    ("signature", doc["document_meta_info"]["signature"], signature_bbox)
+                )
+
+        final_documents = {
+            "file_name": f"{document_name}.pdf",
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "document_meta_info": doc["document_meta_info"],
+            "bounding_boxes": bounding_boxes,
+            "random_pii_values": random_pii_values,
+        }
+
+        self.draw_bounding_boxes(pdf, bounding_boxes)
+
+        # save everything
+        pdf.save(
+            os.path.join(
+                output_folder,
+                "annotated",
+                f"{document_name}_annotated.pdf",
+            )
+        )
+
+        with open(
+                os.path.join(
+                    output_folder,
+                    "entities",
+                    f"{document_name}_bounding_boxes.json",
+                ),
+                "w",
+                encoding="utf-8",
+        ) as f:
+            json.dump(bounding_boxes, f, indent=4, ensure_ascii=False)
+
+        with open(
+                os.path.join(
+                    output_folder,
+                    "layoutlm_labels",
+                    f"{document_name}_layoutlm_labels.json",
+                ),
+                "w",
+                encoding="utf-8",
+        ) as f:
+            json.dump(layoutlm_labels, f, indent=4, ensure_ascii=False)
+
+        self.append_document_json(final_documents, f"documents.json", output_folder=output_folder)
+
+
+    def append_document_json(self, document, path, output_folder=None):
+        if not output_folder:
+            output_folder = self.output_folder
         try:
-            with open(os.path.join(self.output_folder, path), "r") as f:
+            with open(os.path.join(output_folder, path), "r") as f:
                 existing_documents = json.load(f)
-                existing_documents.append(document)
-            with open(
-                    os.path.join(self.output_folder, path), "w", encoding="utf-8"
-            ) as f:
-                json.dump(existing_documents, f, indent=4, ensure_ascii=False)
+
         except FileNotFoundError:
-            pass
+            existing_documents = []
+
+        existing_documents.append(document)
+        with open(
+                os.path.join(output_folder, path), "w", encoding="utf-8"
+        ) as f:
+            json.dump(existing_documents, f, indent=4, ensure_ascii=False)
 
     def save_documents(self, path, json_format=True):
         try:
