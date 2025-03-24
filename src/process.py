@@ -1,6 +1,7 @@
 import json
 from src.config import *
 import cv2
+import pybboxes as pbx
 import numpy as np
 import math
 import os
@@ -157,52 +158,59 @@ def rotate_benchmark(path_to_images):
             os.remove(output_path)
 
 
-def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str, new_labels_dir: str = "labels", images_dir: str = None):
+def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str, new_labels_dir: str = "labels",
+                                images_dir: str = None):
     if not images_dir:
         images_dir = os.path.join(root_dir, "images")
 
     os.makedirs(new_labels_dir, exist_ok=True)
     labels = os.listdir(os.path.join(root_dir, raw_labels_path))
-    labels = [label for label in labels if label.endswith(".txt")]
+    labels = [label.replace(".txt", "") for label in labels if label.endswith(".txt")]
     labels = sorted(labels)
 
     images = os.listdir(images_dir)
     images = [img for img in images if img.endswith(".jpg") or img.endswith(".png")]
-    images = sorted(images)
-
+    images = set(images)
 
     all_labels = {}
-    for label, image in zip(labels, images):
-        with open(os.path.join(root_dir, raw_labels_path, label), "r") as f:
-            lines = f.readlines()
-            lines = [list(map(float, bbox.strip().split())) for bbox in lines]
-            lines = [[int(bbox[0])] + bbox[1:] for bbox in lines]
+    for label in labels:
+        if f"{label}.jpg" in images:
+            image = f"{label}.jpg"
+        elif f"{label}.png" in images:
+            image = f"{label}.png"
+        else:
+            print(f"Image for label {label} not found.")
+            continue
+        image_opened = Image.open(os.path.join(images_dir, image))
+        img_width, img_height = image_opened.size
 
+        with open(os.path.join(root_dir, raw_labels_path, f"{label}.txt"), "r") as f:
+            lines = f.readlines()
 
         txt_labels = []
         for line in lines:
-            image_opened = Image.open(os.path.join(images_dir, image))
-            img_width, img_height = image_opened.size
-            class_id = line[0]
-            box_center_x = line[1]
-            box_center_y = line[2]
-            box_width = line[3]
-            box_height = line[4]
+            values = line.strip().split()
+            class_id = int(values[0])
+            box_center_x = float(values[1])
+            box_center_y = float(values[2])
+            box_width = float(values[3])
+            box_height = float(values[4])
 
-            x_min = (box_center_x - box_width / 2) * img_width
-            y_min = (box_center_y - box_height / 2) * img_height
-            x_max = (box_center_x + box_width / 2) * img_width
-            y_max = (box_center_y + box_height / 2) * img_height
+            bbox_cor = pbx.convert_bbox(
+                (box_center_x, box_center_y, box_width, box_height),
+                from_type="yolo",
+                to_type="voc",
+                image_size=(img_width, img_height),
+            )
+            x_min, y_min, x_max, y_max = bbox_cor
 
             txt_labels.append(f"{class_id} {x_min} {y_min} {x_max} {y_max}")
         all_labels[label] = '\n'.join(txt_labels)
 
-
     for label in all_labels:
-        with open(os.path.join(new_labels_dir, label), "w") as f:
+        with open(os.path.join(new_labels_dir, f"{label}.txt"), "w") as f:
             f.write(all_labels[label])
 
-
-if __name__ == "__main__":
-    # rotate_benchmark("benchmark_dataset/images")
-    convert_yolo_to_predictions("../evaluation/predictions/yolo", "labels_raw")
+# if __name__ == "__main__":
+# rotate_benchmark("benchmark_dataset/images")
+# convert_yolo_to_predictions("../evaluation/predictions/yolo", "labels_raw")

@@ -34,7 +34,7 @@ class Augmentation:
 
     @staticmethod
     def apply_compression(
-            image: np.ndarray, bboxes: list = None, quality_range: tuple = (25, 40)
+            image: np.ndarray, bboxes: list = None, quality_range: tuple = (30, 45)
     ) -> (np.ndarray, list):
         quality = random.randint(quality_range[0], quality_range[1])
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
@@ -208,7 +208,7 @@ class Augmentation:
 
     @staticmethod
     def apply_rotation(
-            image: np.ndarray, bboxes: list = None, angle_range: tuple = (-0.7, 0.7)
+            image: np.ndarray, bboxes: list = None, angle_range: tuple = (-0.5, 0.5)
     ) -> (np.ndarray, list):
         """
         Rotate the image by a random angle (from angle_range) and update bounding boxes if provided.
@@ -257,18 +257,34 @@ class Augmentation:
         if bboxes is None:
             return background
 
-        new_bboxes = []
-        for bbox in bboxes:
-            label, coords = bbox[0], bbox[1:]
-            # Scale the coordinates and add the offset.
-            new_coords = [
-                coords[0] * scale + offset_x,
-                coords[1] * scale + offset_y,
-                coords[2] * scale + offset_x,
-                coords[3] * scale + offset_y
-            ]
-            new_bboxes.append([label] + new_coords)
-        return background, new_bboxes
+        if len(bboxes) > 2 and isinstance(bboxes[0][0], float):
+            bboxes = [bboxes]
+
+        new_bboxes_tuples = []
+        for i, bboxes_tuple in enumerate(bboxes):
+            new_bboxes = []
+            for bbox in bboxes_tuple:
+                if i == 1:
+                    coords = bbox
+                    label = None
+                else:
+                    label, coords = bbox[0], bbox[1:]
+                # Scale the coordinates and add the offset.
+                new_coords = [
+                    coords[0] * scale + offset_x,
+                    coords[1] * scale + offset_y,
+                    coords[2] * scale + offset_x,
+                    coords[3] * scale + offset_y
+                ]
+                if label is not None:
+                    new_bboxes.append([label] + new_coords)
+                else:
+                    new_bboxes.append(new_coords)
+            new_bboxes_tuples.append(new_bboxes)
+
+        if len(new_bboxes_tuples) == 1:
+            return background, new_bboxes_tuples[0]
+        return background, new_bboxes_tuples
 
     @staticmethod
     def apply_lines(image: np.ndarray, bboxes: list = None) -> (np.ndarray, list):

@@ -1509,3 +1509,79 @@ LATEX text:
 PII entities:
 {1}
 """.format
+
+
+GENERATE_BIO_TAGS_SYSTEM_PROMPT = """
+## You are provided with:
+1) A photo of a document.
+2) Text from this document (the words are not necessary presented in the correct order).
+3) A json dict (template), which you should fill in.
+
+## Your task
+You should generate BIO-tag for each word in the provided text and fill in the provided json dict template.
+These tags include:
+- `full_name` for persons names (including first, middle, and last names)
+- `dates` for all dates in all formats
+- `address` for any address (including street, house numbers, postal codes, cities and etc.)
+- `company_name` for any company name
+- `email_address` for any email address
+- `phone_number` for any phone number.
+
+### Notes about company names:
+- DO not include University names, school names, or any other educational institutions to the `company_name` tag.
+- DO not include names of cities, countries, or any other geographical locations to the `company_name` tag.
+- DO not include department names, job titles, or any other organizational units to the `company_name` tag.
+- The company name should be included if it's the subject of the document, the company that issued the document, or the company that the document is addressed to.
+
+### Notes about dates:
+- DO not include solely the month or the year to the `dates` tag.
+
+**You must use the provided photo to navigate the document, because the words in the text are not perfectly sorted.**
+
+## Output requirements
+A json dict of BIO NER tags. Keys are the words indexes. Each value is a dict:
+{"word": "<word_from_text>", "tag": "<corresponding_ner_tag"}
+The value under "word" key is a word from the provided text.
+The value under "tag" key is its corresponding BIO NER tag.
+The length of this dict must be the same as the number of words (tokens) in the provided text.
+All words (tokens) in the provided text are divided with spaces.
+Each generated tag must match its corresponding word in the provided text.
+**YOU MUST NOT CHANGE THE ORDER OF THE WORDS IN THE TEXT AND THE WORDS IN THE GENERATED TAGS.**
+**YOU MUST MAKE SURE THAT THE NUMBER OF INDEXES IN YOUR OUTPUT (GENERATED TAGS) MATCHES THE NUMBER OF INDEXES IN THE PROVIDED TEMPLATE.**
+
+## Example
+Input text:
+```plain_text
+John Doe lives at 123 Main St. Email: john@example.com
+```
+
+Your output:
+```json
+{
+    "1": {"word": "John", "tag": "B-full_name"},
+    "2": {"word": "Doe", "tag": "I-full_name"},
+    "3": {"word": "lives", "tag": "O"},
+    "4": {"word": "at", "tag": "O"},
+    "5": {"word": "123", "tag": "B-address"},
+    "6": {"word": "Main", "tag": "I-address"},
+    "7": {"word": "St.", "tag": "I-address"},
+    "8": {"word": "Email:", "tag": "O"},
+    "9": {"word": "john@example.com", "tag": "B-email_address"}
+}
+```
+
+You MUST write ONLY the generated BIO-tags in the provided json dict template without any comments.
+"""
+
+
+GENERATE_BIO_TAGS_USER_PROMPT = """
+Text:
+```plain_text
+{0}
+```
+
+Json dict template:
+```json
+{1}
+```
+""".format

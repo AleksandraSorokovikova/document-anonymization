@@ -541,6 +541,15 @@ class PIIGenerator:
             image = page.get_image_info()[-1]
             bbox = image["bbox"]
 
+            # page_rect = page.rect
+            # width, height = page_rect.width, page_rect.height
+            #
+            # x_min, y_min, x_max, y_max = bbox
+            # if x_max > width or y_max > height:
+            #     x_max = min(x_max, width)
+            #     y_max = min(y_max, height)
+            #     bbox = (x_min, y_min, x_max, y_max)
+
             return bbox
         except:
             return None
@@ -689,7 +698,7 @@ class PIIGenerator:
 
             for i, word in enumerate(words):
 
-                if entity in {"first_name", "last_name"}:
+                if entity in {"first_name", "last_name", "middle_name"}:
                     if i in word_index_dict:
                         continue
                     else:
@@ -739,12 +748,15 @@ class PIIGenerator:
 
         if signature:
             signature_bbox = self.extract_signature_bounding_boxes(document)
-            entity_bboxes.append(
-                ("signature", "[SIGNATURE]", "B-signature", signature_bbox)
-            )
-            words.append("[SIGNATURE]")
-            boxes.append(signature_bbox)
-            ner_tags.append("B-signature")
+            if signature_bbox is not None:
+                entity_bboxes.append(
+                    ("signature", "[SIGNATURE]", "B-signature", signature_bbox)
+                )
+                words.append("[SIGNATURE]")
+                boxes.append(signature_bbox)
+                ner_tags.append("B-signature")
+
+        boxes = self.clip_bboxes(document, boxes)
 
         return {
             "tokens": words,
@@ -837,6 +849,30 @@ class PIIGenerator:
         )
         return pdf
 
+    @staticmethod
+    def clip_bboxes(pdf, bboxes):
+        page = pdf[0]
+        page_rect = page.rect
+        width, height = page_rect.width, page_rect.height
+        clipped_bboxes = []
+        for bbox in bboxes:
+
+            if len(bbox) == 3:
+                x_min, y_min, x_max, y_max = bbox[2]
+            else:
+                x_min, y_min, x_max, y_max = bbox
+
+            if x_max > width or y_max > height:
+                x_max = min(x_max, width - 1)
+                y_max = min(y_max, height - 1)
+
+            if len(bbox) == 3:
+                clipped_bboxes.append([bbox[0], bbox[1], [x_min, y_min, x_max, y_max]])
+            else:
+                clipped_bboxes.append([x_min, y_min, x_max, y_max])
+
+        return clipped_bboxes
+
     def create_document(self, doc_format, path=None, doc_img_folder_path=None):
         if doc_format == "html":
             html_content, document_meta_info, random_pii_values = (
@@ -863,6 +899,11 @@ class PIIGenerator:
         bounding_boxes, found_entities = self.extract_bounding_boxes(
             pdf, random_pii_values
         )
+
+        bounding_boxes = self.clip_bboxes(pdf, bounding_boxes)
+
+        # FIX NONE IN SIGNATURE
+        # FIX MIDDLE NAME
         layoutlm_labels = self.generate_layoutlm_labels(pdf, random_pii_values, document_meta_info["signature"])
 
         if document_meta_info["signature"] is not None:
@@ -963,6 +1004,9 @@ class PIIGenerator:
         bounding_boxes, found_entities = self.extract_bounding_boxes(
             pdf, random_pii_values
         )
+        bounding_boxes = self.clip_bboxes(pdf, bounding_boxes)
+        # FIX NONE IN SIGNATURE
+        # FIX MIDDLE NAME
         layoutlm_labels = self.generate_layoutlm_labels(pdf, random_pii_values, doc["document_meta_info"]["signature"])
 
         if doc["document_meta_info"]["signature"] is not None:

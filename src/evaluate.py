@@ -2,8 +2,7 @@ from src.config import *
 import os
 import time
 import numpy as np
-import pandas as pd
-import pybboxes as pbx
+import json
 from collections import defaultdict
 from PIL import Image
 from src.dataset_processing import return_image_with_bounding_boxes
@@ -261,13 +260,259 @@ def measure_inference_time(model, test_images):
     return avg_inference_time
 
 
-# if __name__ == "__main__":
-#     df_results = evaluate_all_labels(
-#         "benchmark_dataset",
-#         "predictions/yolo",
-#         iou_threshold=0.5,
-#         class_names=id_to_pii,
-#         create_image_views=True
-#     )
-#     model_metadata = "Model: YOLOv10-Document-Layout-Analysis\n\nImage size: 960x960\n\nEpochs: 100\n\nDataset size: 2k images\n\n"
-#     create_markdown_report(df_results, model_metadata, "benchmark_evaluation.md")
+def compute_area(box):
+    """
+    Вычисляет площадь bbox.
+    box: [x_min, y_min, x_max, y_max]
+    """
+    width = max(0, box[2] - box[0])
+    height = max(0, box[3] - box[1])
+    return width * height
+
+
+def compute_intersection(boxA, boxB):
+    """
+    Вычисляет площадь пересечения двух bbox.
+    Формат: [x_min, y_min, x_max, y_max].
+    """
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    inter_width = max(0, xB - xA)
+    inter_height = max(0, yB - yA)
+    return inter_width * inter_height
+
+
+def extract_token_entities(doc):
+    entities = []
+    for token, box, tag in zip(doc["tokens"], doc["boxes"], doc["ner_tags"]):
+        if tag == "O":
+            continue
+        if tag.startswith("B-") or tag.startswith("I-"):
+            entity_type = tag[2:]
+        else:
+            entity_type = tag
+        entities.append({"type": entity_type, "bbox": box})
+    return entities
+
+
+def calculate_layoutlm_metrics_single(gt_doc, pred_doc, coverage_threshold=0.7):
+    """
+    Считает precision, recall, F1 для одного документа, проверяя покрытие
+    только со стороны ground truth bbox.
+
+    Алгоритм:
+      - Recall: для каждого gt bbox проверяем, есть ли предсказанный bbox,
+        который покрывает этот gt bbox не менее чем на coverage_threshold
+        (intersection(gt, pred) / area(gt) >= coverage_threshold).
+        Если есть — TP, иначе — FN.
+
+      - Precision: для каждого предсказанного bbox проверяем, есть ли
+        ground truth bbox, который покрывается им на coverage_threshold
+        (intersection(gt, pred) / area(gt) >= coverage_threshold).
+        Если есть — «корректное предсказание», иначе — FP.
+    """
+    gt_entities = extract_token_entities(gt_doc)
+    pred_entities = extract_token_entities(pred_doc)
+
+    categories = set([e["type"] for e in gt_entities] + [e["type"] for e in pred_entities])
+    metrics = {}
+
+    for cat in categories:
+        gt_cat = [e for e in gt_entities if e["type"] == cat]
+        pred_cat = [e for e in pred_entities if e["type"] == cat]
+
+        TP = 0
+        for gt in gt_cat:
+            gt_area = compute_area(gt["bbox"])
+            covered = False
+            for pred in pred_cat:
+                inter_area = compute_intersection(gt["bbox"], pred["bbox"])
+                if gt_area > 0 and (inter_area / gt_area) >= coverage_threshold:
+                    covered = True
+                    break
+            if covered:
+                TP += 1
+        FN = len(gt_cat) - TP
+
+        correct_pred = 0
+        for pred in pred_cat:
+            covers = False
+            for gt in gt_cat:
+                gt_area = compute_area(gt["bbox"])
+                inter_area = compute_intersection(gt["bbox"], pred["bbox"])
+                if gt_area > 0 and (inter_area / gt_area) >= coverage_threshold:
+                    covers = True
+                    break
+            if covers:
+                correct_pred += 1
+        FP = len(pred_cat) - correct_pred
+
+        precision = correct_pred / len(pred_cat) if len(pred_cat) > 0 else 0.0
+        recall = TP / len(gt_cat) if len(gt_cat) > 0 else 1.0
+
+        if precision + recall == 0:
+            f1 = 0.0
+        else:
+            f1 = 2 * precision * recall / (precision + recall)
+
+        metrics[cat] = {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "TP": TP,
+            "FN": FN,
+            "FP": FP,
+        }
+
+    return metrics
+
+
+def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5):
+    """
+    Считает метрики для набора документов, суммируя TP, FP, FN по всем документам,
+    а затем вычисляя итоговые precision, recall и F1 для каждой категории.
+    """
+    # Сначала собираем все bbox'ы по документам
+    all_gt = []
+    all_pred = []
+    for gt_doc, pred_doc in zip(list_gt_docs, list_pred_docs):
+        all_gt.extend(extract_token_entities(gt_doc))
+        all_pred.extend(extract_token_entities(pred_doc))
+
+    categories = set([e["type"] for e in all_gt] + [e["type"] for e in all_pred])
+    counts = {cat: {"TP": 0, "FN": 0, "FP": 0, "total_gt": 0, "total_pred": 0} for cat in categories}
+
+    # Разбиваем на списки per документ, чтобы корректно считать TP/FN/FP
+    # Но если нужно всё смешать, можно считать, что это единый пул.
+    # Ниже сделаем "глобально" по всем bboxes (как один большой документ).
+    # Если нужен подсчёт по каждому документу отдельно, нужно повторять логику, как в calculate_metrics_single.
+
+    # --- "Глобальный" подсчёт: ---
+    for cat in categories:
+        gt_cat = [e for e in all_gt if e["type"] == cat]
+        pred_cat = [e for e in all_pred if e["type"] == cat]
+
+        # Recall
+        TP = 0
+        for gt in gt_cat:
+            gt_area = compute_area(gt["bbox"])
+            covered = False
+            for pred in pred_cat:
+                inter_area = compute_intersection(gt["bbox"], pred["bbox"])
+                if gt_area > 0 and (inter_area / gt_area) >= coverage_threshold:
+                    covered = True
+                    break
+            if covered:
+                TP += 1
+        FN = len(gt_cat) - TP
+
+        # Precision
+        correct_pred = 0
+        for pred in pred_cat:
+            covers = False
+            for gt in gt_cat:
+                gt_area = compute_area(gt["bbox"])
+                inter_area = compute_intersection(gt["bbox"], pred["bbox"])
+                if gt_area > 0 and (inter_area / gt_area) >= coverage_threshold:
+                    covers = True
+                    break
+            if covers:
+                correct_pred += 1
+        FP = len(pred_cat) - correct_pred
+
+        counts[cat]["TP"] = TP
+        counts[cat]["FN"] = FN
+        counts[cat]["FP"] = FP
+        counts[cat]["total_gt"] = len(gt_cat)
+        counts[cat]["total_pred"] = len(pred_cat)
+
+    # Вычисляем финальные метрики
+    metrics = {}
+    for cat, c in counts.items():
+        TP = c["TP"]
+        FN = c["FN"]
+        FP = c["FP"]
+        total_gt = c["total_gt"]
+        total_pred = c["total_pred"]
+
+        precision = (total_pred - FP) / total_pred if total_pred > 0 else 0.0
+        recall = TP / total_gt if total_gt > 0 else 0.0
+
+        if precision + recall == 0:
+            f1 = 0.0
+        else:
+            f1 = 2 * precision * recall / (precision + recall)
+
+        metrics[cat] = {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "TP": TP,
+            "FN": FN,
+            "FP": FP,
+        }
+
+    return metrics
+
+
+def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_folder: str):
+    all_predictions = os.listdir(os.path.join(path_to_results, labels_folder))
+
+    list_gt_docs = []
+    list_pred_docs = []
+    predictions_dict = {}
+
+    metrics = {
+        cat: defaultdict(float)
+        for cat in ["full_name", "dates", "phone_number", "address", "company_name"]
+    }
+    recall_count = {
+        cat: 0
+        for cat in ["full_name", "dates", "phone_number", "address", "company_name"]
+    }
+    for pred in all_predictions:
+        if not pred.endswith(".json"):
+            continue
+        with open(f"{path_to_results}/{labels_folder}/{pred}", "r") as f:
+            predictions = json.load(f)
+            list_pred_docs.append(predictions)
+        with open(f"{path_to_gt}/{pred}", "r") as f:
+            gt = json.load(f)
+            list_gt_docs.append(gt)
+
+        metrics_single = calculate_layoutlm_metrics_single(gt, predictions, coverage_threshold=0.5)
+        predictions_dict[pred] = metrics_single
+
+        for cat in metrics_single:
+            if cat not in metrics:
+                continue
+            tp = metrics_single[cat]["TP"]
+            fn = metrics_single[cat]["FN"]
+            if tp + fn > 0:
+                recall_count[cat] += 1
+                metrics[cat]["recall"] += metrics_single[cat]["recall"]
+            metrics[cat]["precision"] += metrics_single[cat]["precision"]
+
+    for cat in metrics:
+        metrics[cat]["recall"] /= recall_count[cat]
+        metrics[cat]["precision"] /= len(all_predictions)
+
+    metrics_batch = calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5)
+
+    # delete metrics for categories that are not in the dataset
+    for cat in list(metrics_batch.keys()):
+        if cat not in metrics:
+            del metrics_batch[cat]
+
+    with open(f"{path_to_results}/metrics_for_each_document.json", "w") as f:
+        json.dump(predictions, f, indent=4)
+
+    with open(f"{path_to_results}/avg_metrics_per_document.json", "w") as f:
+        json.dump(metrics, f, indent=4)
+
+    with open(f"{path_to_results}/avg_metrics_for_batch.json", "w") as f:
+        json.dump(metrics_batch, f, indent=4)
+
+    return metrics, metrics_batch

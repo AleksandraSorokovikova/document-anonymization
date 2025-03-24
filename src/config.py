@@ -76,6 +76,7 @@ pii_classes = [
 
 pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
 id_to_pii = {i: pii["pii_id"] for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
+layoutlm_ner_classes = ['B-signature', 'B-iban', 'I-full_name', 'B-company_name', 'O', 'I-credit_card_number', 'B-credit_card_number', 'I-address', 'I-dates', 'I-iban', 'B-address', 'I-phone_number', 'B-car_plate', 'B-dates', 'B-full_name', 'B-email_address', 'B-vin', 'I-company_name', 'B-phone_number', 'I-car_plate']
 
 
 pii_names = [
