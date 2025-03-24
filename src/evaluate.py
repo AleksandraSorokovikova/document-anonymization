@@ -284,7 +284,7 @@ def compute_intersection(boxA, boxB):
     return inter_width * inter_height
 
 
-def extract_token_entities(doc):
+def extract_token_entities(doc, entities_to_exclude=None):
     entities = []
     for token, box, tag in zip(doc["tokens"], doc["boxes"], doc["ner_tags"]):
         if tag == "O":
@@ -293,6 +293,8 @@ def extract_token_entities(doc):
             entity_type = tag[2:]
         else:
             entity_type = tag
+        if entities_to_exclude is not None and entity_type in entities_to_exclude:
+            continue
         entities.append({"type": entity_type, "bbox": box})
     return entities
 
@@ -457,6 +459,83 @@ def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_thre
     return metrics
 
 
+def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5):
+    """
+    Вычисляет метрики общего покрытия для одного документа.
+
+    Алгоритм:
+      - Для каждого bbox из ground truth (вне зависимости от категории) проверяется,
+        покрыт ли он хотя бы одним предсказанным bbox (той же или любой категории)
+        по условию: (intersection(gt, pred) / area(gt)) >= coverage_threshold.
+        Если да — считается TP, иначе — FN.
+      - Для каждого предсказанного bbox, если не найден ни один ground truth bbox,
+        для которого (intersection(gt, pred) / area(gt)) >= coverage_threshold,
+        предсказание считается ложноположительным (FP).
+
+    Возвращает словарь с метриками:
+       {
+         "precision": ...,
+         "recall": ...,
+         "f1": ...,
+         "TP": ...,
+         "FN": ...,
+         "FP": ...,
+         "total_gt": ...,
+         "total_pred": ...
+       }
+    """
+
+    entities_to_exclude = ["signature", "dates", "iban", "credit_card_number", "vin", "car_plate"]
+
+    gt_entities = extract_token_entities(gt_doc, entities_to_exclude=entities_to_exclude)
+    pred_entities = extract_token_entities(pred_doc, entities_to_exclude=entities_to_exclude)
+
+    # Расчёт TP и FN (для recall)
+    TP = 0
+    for gt in gt_entities:
+        gt_area = compute_area(gt["bbox"])
+        covered = False
+        for pred in pred_entities:
+            inter_area = compute_intersection(gt["bbox"], pred["bbox"])
+            if gt_area > 0 and (inter_area / gt_area) >= coverage_threshold:
+                covered = True
+                break
+        if covered:
+            TP += 1
+    FN = len(gt_entities) - TP
+
+    # Расчёт корректных предсказаний и FP (для precision)
+    correct_pred = 0
+    for pred in pred_entities:
+        valid = False
+        for gt in gt_entities:
+            gt_area = compute_area(gt["bbox"])
+            inter_area = compute_intersection(gt["bbox"], pred["bbox"])
+            if gt_area > 0 and (inter_area / gt_area) >= coverage_threshold:
+                valid = True
+                break
+        if valid:
+            correct_pred += 1
+    FP = len(pred_entities) - correct_pred
+
+    precision = correct_pred / len(pred_entities) if len(pred_entities) > 0 else 0.0
+    recall = TP / len(gt_entities) if len(gt_entities) > 0 else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+    overall = {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "TP": TP,
+        "FN": FN,
+        "FP": FP,
+        "total_gt": len(gt_entities),
+        # "total_pred": len(pred_entities)
+    }
+    return overall
+
+
+
 def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_folder: str):
     all_predictions = os.listdir(os.path.join(path_to_results, labels_folder))
 
@@ -466,12 +545,21 @@ def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_fol
 
     metrics = {
         cat: defaultdict(float)
-        for cat in ["full_name", "dates", "phone_number", "address", "company_name"]
+        for cat in ["full_name", "dates", "phone_number", "address", "company_name", "email_address"]
     }
-    recall_count = {
+    tp_count = {
         cat: 0
-        for cat in ["full_name", "dates", "phone_number", "address", "company_name"]
+        for cat in ["full_name", "dates", "phone_number", "address", "company_name", "email_address"]
     }
+    overall_metrics = {
+        "precision": 0,
+        "recall": 0,
+        "f1": 0,
+        "TP": 0,
+        "FN": 0,
+        "FP": 0
+    }
+    overall_tp_count = 0
     for pred in all_predictions:
         if not pred.endswith(".json"):
             continue
@@ -483,6 +571,7 @@ def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_fol
             list_gt_docs.append(gt)
 
         metrics_single = calculate_layoutlm_metrics_single(gt, predictions, coverage_threshold=0.5)
+        overall_metrics_single = calculate_overall_metrics_single(gt, predictions, coverage_threshold=0.5)
         predictions_dict[pred] = metrics_single
 
         for cat in metrics_single:
@@ -491,13 +580,27 @@ def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_fol
             tp = metrics_single[cat]["TP"]
             fn = metrics_single[cat]["FN"]
             if tp + fn > 0:
-                recall_count[cat] += 1
+                tp_count[cat] += 1
                 metrics[cat]["recall"] += metrics_single[cat]["recall"]
-            metrics[cat]["precision"] += metrics_single[cat]["precision"]
+                metrics[cat]["precision"] += metrics_single[cat]["precision"]
+
+        overall_metrics["TP"] += overall_metrics_single["TP"]
+        overall_metrics["FN"] += overall_metrics_single["FN"]
+        overall_metrics["FP"] += overall_metrics_single["FP"]
+        overall_metrics["precision"] += overall_metrics_single["precision"]
+
+        if overall_metrics_single["total_gt"] > 0:
+            overall_tp_count += 1
+            overall_metrics["recall"] += overall_metrics_single["recall"]
+
 
     for cat in metrics:
-        metrics[cat]["recall"] /= recall_count[cat]
-        metrics[cat]["precision"] /= len(all_predictions)
+        metrics[cat]["recall"] /= tp_count[cat]
+        metrics[cat]["precision"] /= tp_count[cat]
+
+    overall_metrics["precision"] /= overall_tp_count
+    overall_metrics["recall"] /= overall_tp_count
+    overall_metrics["f1"] = 2 * overall_metrics["precision"] * overall_metrics["recall"] / (overall_metrics["precision"] + overall_metrics["recall"])
 
     metrics_batch = calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5)
 
@@ -506,13 +609,4 @@ def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_fol
         if cat not in metrics:
             del metrics_batch[cat]
 
-    with open(f"{path_to_results}/metrics_for_each_document.json", "w") as f:
-        json.dump(predictions, f, indent=4)
-
-    with open(f"{path_to_results}/avg_metrics_per_document.json", "w") as f:
-        json.dump(metrics, f, indent=4)
-
-    with open(f"{path_to_results}/avg_metrics_for_batch.json", "w") as f:
-        json.dump(metrics_batch, f, indent=4)
-
-    return metrics, metrics_batch
+    return metrics, metrics_batch, overall_metrics
