@@ -8,6 +8,7 @@ from src.process import convert_yolo_to_predictions
 from sklearn.model_selection import train_test_split
 from src.augmentation import Augmentation
 import cv2
+import shutil
 import numpy as np
 import random
 from collections import defaultdict
@@ -43,6 +44,8 @@ def return_image_with_bounding_boxes(img_path, bboxes_path, zoom=1.0, b_type="tx
         class_label, coords = bbox[0], bbox[1:]
         x0, y0, x1, y1 = [coord * zoom for coord in coords]
         class_name = id_to_pii.get(class_label, -1)
+        if class_name == -1:
+            continue
         color = pii_entities_colors_names.get(class_name, "black")
         draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
 
@@ -190,9 +193,7 @@ def split_by_layout(mapping, train_val_ratio, val_test_ratio):
 def split_layoutlm_dataset(
         path_to_folder,
         output_path,
-        train_val_ratio=0.8,
-        val_test_ratio=0.9,
-        split_strategy="random"
+        train_val_ratio=0.9,
 ):
     images_dir = os.path.join(path_to_folder, "images")
     labels_dir = os.path.join(path_to_folder, "layoutlm_labels")
@@ -229,14 +230,13 @@ def split_layoutlm_dataset(
         })
     random.shuffle(data)
 
-    train_size = int(0.8 * len(data))
-    val_size = int(0.1 * len(data))
+    train_size = int(train_val_ratio * len(data))
+    val_size = int((1-train_val_ratio) / 2 * len(data))
 
     train_data = data[:train_size]
     val_data = data[train_size:train_size + val_size]
     test_data = data[train_size + val_size:]
 
-    # Создаем DatasetDict
     dataset = DatasetDict({
         "train": Dataset.from_list(train_data, features=features),
         "val": Dataset.from_list(val_data, features=features),
@@ -244,6 +244,28 @@ def split_layoutlm_dataset(
     })
 
     dataset.save_to_disk(output_path)
+
+    os.makedirs(f"{output_path}/test_labeled_images", exist_ok=True)
+    os.makedirs(f"{output_path}/test_layoutlm_labels", exist_ok=True)
+
+    for image in dataset["test"]["id"]:
+        labeled_image = return_image_with_bounding_boxes(
+            f"{path_to_folder}/images/{image}",
+            f"{path_to_folder}/layoutlm_labels/{image.replace('.png', '.json')}",
+            b_type="layoutlm"
+        )
+        shutil.copy(
+            f"{path_to_folder}/images/{image}",
+            f"{output_path}/test_images/{image}",
+        )
+        labeled_image.save(f"{output_path}/test_labeled_images/{image}")
+
+    for image in dataset["test"]["id"]:
+        json_label = image.replace(".png", ".json")
+        shutil.copy(
+            f"{path_to_folder}/layoutlm_labels/{json_label}",
+            f"{output_path}/test_layoutlm_labels/{json_label}",
+        )
 
 
 def split_yolo_dataset(

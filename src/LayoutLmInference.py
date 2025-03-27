@@ -2,6 +2,10 @@ from transformers import AutoModelForTokenClassification, AutoProcessor
 from PIL import ImageDraw, ImageFont, Image
 import torch
 import numpy as np
+import os
+import json
+from tqdm import tqdm
+from src.process import create_image_view
 from doctr.models import ocr_predictor
 from src.config import pii_entities_colors_names
 
@@ -11,10 +15,12 @@ class LayoutLmInference:
             self,
             path_to_layoutlm_weights,
             apply_ocr=False,
-            detection_model="db_resnet50", # "fast_base", "db_resnet50"
-            recognition_model="parseq", # "sar_resnet31", "vitstr_base", "crnn_vgg16_bn", "parseq", "master"
+            detection_model="db_resnet50",  # "fast_base", "db_resnet50"
+            recognition_model="parseq",  # "sar_resnet31", "vitstr_base", "crnn_vgg16_bn", "parseq", "master"
     ):
-        self.model = AutoModelForTokenClassification.from_pretrained(path_to_layoutlm_weights)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.model = AutoModelForTokenClassification.from_pretrained(path_to_layoutlm_weights).to(self.device)
         self.processor = AutoProcessor.from_pretrained(
             "microsoft/layoutlmv3-base", apply_ocr=apply_ocr, is_split_into_words=True
         )
@@ -23,7 +29,7 @@ class LayoutLmInference:
             self.ocr_model = ocr_predictor(
                 detection_model, recognition_model, pretrained=True,
                 export_as_straight_boxes=True, assume_straight_pages=True
-            )
+            ).to(self.device)
 
     @staticmethod
     def unnormalize_box(bboxes, width, height):
@@ -105,7 +111,7 @@ class LayoutLmInference:
         for chunk_words, chunk_boxes in chunks:
             encoding = self.processor(
                 image, chunk_words, boxes=chunk_boxes, return_tensors="pt"
-            )
+            ).to(self.device)
             encoding_chunks.append(encoding)
 
         return encoding_chunks
@@ -157,13 +163,12 @@ class LayoutLmInference:
             predictions = self.convert_tokens_to_words(word_ids, token_predictions)
             ner_tags_predictions.extend(predictions)
 
-
         assert len(ner_tags_predictions) == len(words)
 
         return {
 
             "tokens": words,
-            "boxes": boxes,
+            "bboxes": boxes,
             "ner_tags": ner_tags_predictions
         }
 
@@ -172,7 +177,7 @@ class LayoutLmInference:
         image = Image.open(image_path).convert("RGB")
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default()
-        for word, box, pred in zip(predictions["tokens"], predictions["boxes"], predictions["ner_tags"]):
+        for word, box, pred in zip(predictions["tokens"], predictions["bboxes"], predictions["ner_tags"]):
             if pred == "O":
                 continue
             pred = pred.split("-")[-1]
@@ -181,3 +186,18 @@ class LayoutLmInference:
             if add_text:
                 draw.text((box[0], box[1] - 10), f"{pred}", font=font, fill=color)
         return image
+
+    def get_layoutlm_predictions(self, images, path_to_image, path_to_gt_labeled_images, labels_saving_path,
+                                 image_views_path):
+        for image in tqdm(images):
+            if not image.endswith(".png"):
+                continue
+
+            image_path = os.path.join(path_to_image, image)
+            predictions = self.predict(image_path)
+            img_with_pred_bboxes = self.draw_bboxes(image_path, predictions)
+            img_with_gt_bboxes = Image.open(os.path.join(path_to_gt_labeled_images, image))
+            create_image_view(img_with_gt_bboxes, img_with_pred_bboxes, f"{image_views_path}/{image}")
+            label_name = image.replace(".png", ".json")
+            with open(f"{labels_saving_path}/{label_name}", "w") as f:
+                json.dump(predictions, f, indent=4)

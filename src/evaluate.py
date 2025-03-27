@@ -286,7 +286,7 @@ def compute_intersection(boxA, boxB):
 
 def extract_token_entities(doc, entities_to_exclude=None):
     entities = []
-    for token, box, tag in zip(doc["tokens"], doc["boxes"], doc["ner_tags"]):
+    for token, box, tag in zip(doc["tokens"], doc["bboxes"], doc["ner_tags"]):
         if tag == "O":
             continue
         if tag.startswith("B-") or tag.startswith("I-"):
@@ -535,9 +535,8 @@ def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5):
     return overall
 
 
-
-def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_folder: str):
-    all_predictions = os.listdir(os.path.join(path_to_results, labels_folder))
+def count_all_layoutlm_metrics(path_to_gt: str, labels_folder: str, class_names: list):
+    all_predictions = os.listdir(labels_folder)
 
     list_gt_docs = []
     list_pred_docs = []
@@ -545,11 +544,11 @@ def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_fol
 
     metrics = {
         cat: defaultdict(float)
-        for cat in ["full_name", "dates", "phone_number", "address", "company_name", "email_address"]
+        for cat in class_names
     }
     tp_count = {
         cat: 0
-        for cat in ["full_name", "dates", "phone_number", "address", "company_name", "email_address"]
+        for cat in class_names
     }
     overall_metrics = {
         "precision": 0,
@@ -563,7 +562,7 @@ def count_all_layoutlm_metrics(path_to_gt: str, path_to_results: str, labels_fol
     for pred in all_predictions:
         if not pred.endswith(".json"):
             continue
-        with open(f"{path_to_results}/{labels_folder}/{pred}", "r") as f:
+        with open(f"{labels_folder}/{pred}", "r") as f:
             predictions = json.load(f)
             list_pred_docs.append(predictions)
         with open(f"{path_to_gt}/{pred}", "r") as f:

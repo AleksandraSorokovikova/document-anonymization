@@ -9,6 +9,17 @@ from PIL import Image
 from scipy.ndimage import interpolation as inter
 
 
+def create_image_view(img_with_gt_bboxes, img_with_pred_bboxes, output_path):
+
+    width, height = img_with_gt_bboxes.size
+    new_image = Image.new("RGB", (2 * width, height))
+
+    new_image.paste(img_with_gt_bboxes, (0, 0))
+    new_image.paste(img_with_pred_bboxes, (width, 0))
+
+    new_image.save(output_path)
+
+
 def rotate_bbox(x_min, y_min, x_max, y_max, angle, img_width, img_height):
     angle = np.radians(angle)
 
@@ -156,6 +167,39 @@ def rotate_benchmark(path_to_images):
             png_path = output_path.replace(".jpg", ".png")
             img.save(png_path, "PNG")
             os.remove(output_path)
+
+
+def convert_yolo_to_layoutlm(predictions_path, output_path, images_path):
+    os.makedirs(output_path, exist_ok=True)
+    txt_labels = [i for i in os.listdir(predictions_path) if i.endswith('.txt')]
+    labels = ['first_name', 'last_name', 'address', 'phone_number', 'email_address', 'dates', 'credit_card_number',
+              'iban', 'company_name', 'signature', 'full_name', 'vin', 'car_plate']
+
+    for txt_label in txt_labels:
+        image = Image.open(os.path.join(images_path, txt_label.replace('.txt', '.png')))
+        img_width, img_height = image.size
+        with open(os.path.join(predictions_path, txt_label), 'r') as f:
+            lines = f.readlines()
+        lines = [line.strip().split(' ') for line in lines]
+        lines = [[int(line[0]), float(line[1]), float(line[2]), float(line[3]), float(line[4])] for line in lines]
+        tokens = []
+        bboxes = []
+        ner_tokens = []
+        for line in lines:
+            ner_tag = "B-" + labels[line[0]]
+            box_center_x, box_center_y, box_width, box_height = line[1:]
+            bbox_cor = pbx.convert_bbox(
+                (box_center_x, box_center_y, box_width, box_height),
+                from_type="yolo",
+                to_type="voc",
+                image_size=(img_width, img_height),
+            )
+            bboxes.append(bbox_cor)
+            ner_tokens.append(ner_tag)
+            tokens.append("-")
+
+        with open(os.path.join(output_path, txt_label.replace(".txt", ".json")), 'w') as f:
+            json.dump({"tokens": tokens, "bboxes": bboxes, "ner_tokens": ner_tokens}, f, indent=4)
 
 
 def convert_yolo_to_predictions(root_dir: str, raw_labels_path: str, new_labels_dir: str = "labels",

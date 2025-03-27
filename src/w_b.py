@@ -3,6 +3,7 @@ import random
 import numpy as np
 from PIL import Image
 import os
+from src.evaluate import count_all_layoutlm_metrics
 
 
 def init_wandb(model_name, dataset_name, params):
@@ -20,26 +21,114 @@ def init_wandb(model_name, dataset_name, params):
 
 
 def log_detection_metrics(
-        metrics,
+        metrics: dict,
+        test_name: str,
+        metric_columns: list,
+        image_views_path: str = None,
+):
+    data = []
+    for class_name, metric_dict in metrics.items():
+        try:
+            row = [class_name] + [metric_dict[col] for col in metric_columns]
+            data.append(row)
+        except KeyError as e:
+            print(f"⚠️ Пропущена метрика {class_name}: отсутствует колонка {e}")
+
+    table = wandb.Table(columns=["class"] + metric_columns, data=data)
+    wandb.log({
+        f"Metrics Table {test_name}": table,  # 👈 добавили слово Table
+    }, step=0)
+
+    if image_views_path:
+        image_paths = [
+            os.path.join(image_views_path, file)
+            for file in os.listdir(image_views_path)
+            if file.lower().endswith((".png", ".jpg", ".jpeg"))
+        ]
+
+        if image_paths:
+            table = wandb.Table(columns=["Comparison"])
+
+            for img_path in image_paths:
+                table.add_data(wandb.Image(img_path))
+
+            wandb.log({f"Bboxes Comparisons {test_name}": table}, step=0)
+        else:
+            print("⚠️ Не найдено изображений для логирования.")
+
+def log_lm_metrics(
+        path_to_gt_benchmark_labels,
+        predicted_benchmark_labels_folder,
         test_name,
-        image_views_path,
-    ):
+        predicted_image_view_path,
+        class_names,
+):
+    metrics_per_documents, metrics_batch, overall_metrics = count_all_layoutlm_metrics(
+        path_to_gt_benchmark_labels, predicted_benchmark_labels_folder, class_names
+    )
 
-    image_paths = os.listdir(image_views_path)
-    image_paths = [os.path.join(image_views_path, file) for file in image_paths if '.DS_Store' not in file]
+    log_detection_metrics(
+        metrics_batch,
+        test_name=f"batch metrics {test_name}",
+        metric_columns=["recall", "precision", "f1", "TP", "FP", "FN"],
+        image_views_path=predicted_image_view_path,
+    )
 
-    # 🔹 1. Логируем таблицу с метриками по классам
-    table = wandb.Table(columns=["Class", "Images", "Instances", "Precision", "Recall", "mAP50", "F1"])
+    log_detection_metrics(
+        metrics_per_documents,
+        test_name=f"per document metrics {test_name}",
+        metric_columns=["recall", "precision"],
+    )
 
-    for class_name, metrics in metrics.items():
-        table.add_data(class_name, metrics["Images"], metrics["Instances"], metrics["Precision"], metrics["Recall"], metrics["mAP50"], metrics["F1"])
+    log_detection_metrics(
+        {
+            "overall": overall_metrics
+        },
+        test_name=f"overall metrics {test_name}",
+        metric_columns=["recall", "precision", "f1"],
+    )
 
-    wandb.log({f"Detection Metrics {test_name}": table})
+"""
+[
+        {   
+            "test_name": "benchmark",
+            "gt_labels": path_to_gt_benchmark_labels,
+            "predicted_labels": predicted_benchmark_labels_folder,
+            "image_views": predicted_image_view_path,
+        },
+        {
+            "test_name": "synthetic",
+            "gt_labels": path_to_gt_synthetic_labels,
+            "predicted_labels": predicted_synthetic_labels_folder,
+            "image_views": predicted_image_view_path,
+        },
+]
+"""
 
-    table = wandb.Table(columns=["Comparison"])
+def count_and_log_all_metrics(
+        samples,
+        lm_model_name,
+        ocr_model_name,
+        run_specification=None
+):
+    run_name = f"{lm_model_name}_{ocr_model_name}" 
+    run_name += '' if run_specification is None else f"_{run_specification}"
+    wandb.init(
+        project="PII_Detection",
+        name=run_name,
+        group=lm_model_name,
+        config={
+            "model": lm_model_name,
+        },
+    )
 
-    for img_path in image_paths:
-        table.add_data(wandb.Image(img_path))
+    for sample in samples:
+        log_lm_metrics(
+            sample["gt_labels"],
+            sample["predicted_labels"],
+            sample["test_name"],
+            sample["image_views"],
+            sample["class_names"],
+        )
 
-    wandb.log({f"Bounding Box Comparisons {test_name}": table})
-
+    wandb.finish()
