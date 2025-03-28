@@ -594,8 +594,12 @@ def count_all_layoutlm_metrics(path_to_gt: str, labels_folder: str, class_names:
 
 
     for cat in metrics:
-        metrics[cat]["recall"] /= tp_count[cat]
-        metrics[cat]["precision"] /= tp_count[cat]
+        if tp_count[cat] == 0:
+            metrics[cat]["recall"] = 0
+            metrics[cat]["precision"] = 0
+        else:
+            metrics[cat]["recall"] /= tp_count[cat]
+            metrics[cat]["precision"] /= tp_count[cat]
 
     overall_metrics["precision"] /= overall_tp_count
     overall_metrics["recall"] /= overall_tp_count

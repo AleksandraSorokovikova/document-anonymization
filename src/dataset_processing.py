@@ -190,15 +190,27 @@ def split_by_layout(mapping, train_val_ratio, val_test_ratio):
     return train_images, val_images, test_images
 
 
+def delete_signatures(label):
+    if "B-signature" in label["ner_tags"]:
+        signature_index = label["ner_tags"].index("B-signature")
+        label["tokens"].pop(signature_index)
+        label["bboxes"].pop(signature_index)
+        label["ner_tags"].pop(signature_index)
+    return label
+
+
 def split_layoutlm_dataset(
         path_to_folder,
         output_path,
         train_val_ratio=0.9,
+        new_ner_tags=None
 ):
     images_dir = os.path.join(path_to_folder, "images")
     labels_dir = os.path.join(path_to_folder, "layoutlm_labels")
 
     ner_classes = layoutlm_ner_classes
+    if new_ner_tags:
+        ner_classes += new_ner_tags
     ner_feature = ClassLabel(names=ner_classes)
 
     features = Features({
@@ -220,6 +232,11 @@ def split_layoutlm_dataset(
 
         with open(json_path, "r", encoding="utf-8") as f:
             label_data = json.load(f)
+
+        label_data = delete_signatures(label_data)
+
+        assert len(label_data["tokens"]) == len(label_data["bboxes"]) == len(label_data["ner_tags"]), \
+            f"Длины токенов, ббоксов и меток не совпадают для {img_file}"
 
         data.append({
             "id": img_file.replace(".png", ""),

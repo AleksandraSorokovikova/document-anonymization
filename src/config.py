@@ -76,7 +76,7 @@ pii_classes = [
 
 pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
 id_to_pii = {i: pii["pii_id"] for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
-layoutlm_ner_classes = ['B-signature', 'B-iban', 'I-full_name', 'B-company_name', 'O', 'I-credit_card_number', 'B-credit_card_number', 'I-address', 'I-dates', 'I-iban', 'B-address', 'I-phone_number', 'B-car_plate', 'B-dates', 'B-full_name', 'B-email_address', 'B-vin', 'I-company_name', 'B-phone_number', 'I-car_plate']
+layoutlm_ner_classes = ['B-iban', 'I-full_name', 'B-company_name', 'O', 'I-credit_card_number', 'B-credit_card_number', 'I-address', 'I-dates', 'I-iban', 'B-address', 'I-phone_number', 'B-car_plate', 'B-dates', 'B-full_name', 'B-email_address', 'B-vin', 'I-company_name', 'B-phone_number', 'I-car_plate']
 
 
 pii_names = [
@@ -214,11 +214,30 @@ pii_entities_colors_names = {
     "credit_card_number": "Turquoise",
     "iban": "Orange",
     "company_name": "Maroon",
-    "signature": "Grey",
+    "signature": "Teal",
     "full_name": "Fuchsia",
     "vin": "Lime",
     "car_plate": "Cyan",
+    "invoice_id": "Aqua",
 }
+
+pii_entities_colors_rgba = {
+    'first_name': (255, 0, 0, 60),           # Red
+    'last_name': (255, 192, 203, 60),        # Pink
+    'address': (0, 128, 0, 60),              # Green
+    'phone_number': (0, 0, 255, 60),         # Blue
+    'email_address': (255, 255, 0, 60),      # Yellow
+    'dates': (128, 0, 128, 60),              # Purple
+    'credit_card_number': (64, 224, 208, 60),# Turquoise
+    'iban': (255, 165, 0, 60),               # Orange
+    'company_name': (128, 0, 0, 60),         # Maroon
+    'signature': (0, 128, 128, 60),          # Teal
+    'full_name': (255, 0, 255, 60),          # Fuchsia
+    'vin': (0, 255, 0, 60),                  # Lime
+    'car_plate': (0, 255, 255, 60),          # Cyan
+    'invoice_id': (0, 255, 255, 60),         # Aqua (same as Cyan)
+}
+
 
 
 font_family = [
@@ -309,3 +328,8 @@ subjects = [
     "Service rendered",
     "Legal issues",
 ]
+
+
+funsd_label_list = ["full_name", "dates", "phone_number", "address", "company_name", "email_address", "signature"]
+receipt_label_list = ["full_name", "dates", "phone_number", "address", "company_name", "signature"]
+invoices_label_list = ["full_name", "dates", "phone_number", "address", "company_name", "email_address", "invoice_id"]

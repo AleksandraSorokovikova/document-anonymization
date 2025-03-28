@@ -1,4 +1,5 @@
 from transformers import AutoModelForTokenClassification, AutoProcessor
+from ultralytics import YOLO
 from PIL import ImageDraw, ImageFont, Image
 import torch
 import numpy as np
@@ -7,25 +8,30 @@ import json
 from tqdm import tqdm
 from src.process import create_image_view
 from doctr.models import ocr_predictor
-from src.config import pii_entities_colors_names
+from src.config import pii_entities_colors_rgba
 
 
-class LayoutLmInference:
+class AnonymizationInference:
     def __init__(
             self,
             path_to_layoutlm_weights,
-            apply_ocr=False,
+            path_to_signature_weights,
+            apply_lm_ocr=False,
+            apply_ocr=True,
             detection_model="db_resnet50",  # "fast_base", "db_resnet50"
-            recognition_model="parseq",  # "sar_resnet31", "vitstr_base", "crnn_vgg16_bn", "parseq", "master"
+            recognition_model="crnn_vgg16_bn",  # "sar_resnet31", "vitstr_base", "crnn_vgg16_bn", "parseq", "master"
+            label_list=None,
     ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = AutoModelForTokenClassification.from_pretrained(path_to_layoutlm_weights).to(self.device)
         self.processor = AutoProcessor.from_pretrained(
-            "microsoft/layoutlmv3-base", apply_ocr=apply_ocr, is_split_into_words=True
+            "microsoft/layoutlmv3-base", apply_ocr=apply_lm_ocr, is_split_into_words=True
         )
-        self.apply_ocr = apply_ocr
-        if not apply_ocr:
+        self.signature_detector = YOLO(path_to_signature_weights)
+        self.label_list = label_list
+        self.apply_lm_ocr = apply_lm_ocr
+        if not apply_lm_ocr and apply_ocr:
             self.ocr_model = ocr_predictor(
                 detection_model, recognition_model, pretrained=True,
                 export_as_straight_boxes=True, assume_straight_pages=True
@@ -54,6 +60,20 @@ class LayoutLmInference:
             ]
             for x_min, y_min, x_max, y_max in bboxes
         ]
+
+    def predict_signatures(self, image_path, words, result_boxes, ner_tags):
+        results = self.signature_detector.predict(image_path, verbose=False)
+        bboxes = []
+        for result in results:
+            boxes = result.boxes.xyxy
+            bboxes.extend(boxes.cpu().numpy().astype(int).tolist())
+
+        for box in bboxes:
+            words.append("[SIGNATURE]")
+            result_boxes.append(box)
+            ner_tags.append("B-signature")
+
+        return words, result_boxes, ner_tags
 
     def convert_ocr_result_to_bboxes(self, ocr_result, width, height):
         words = []
@@ -127,6 +147,15 @@ class LayoutLmInference:
 
         return labels
 
+    def remove_labels(self, ner_tags):
+        for i, tag in enumerate(ner_tags):
+            if tag == "O":
+                continue
+            raw_tag = tag.split("-")[-1]
+            if raw_tag not in self.label_list:
+                ner_tags[i] = "O"
+        return ner_tags
+
     def process_image_with_lm_ocr(self, image_path):
         image = Image.open(image_path).convert("RGB")
         encoding = self.processor(image, return_tensors="pt")
@@ -146,13 +175,25 @@ class LayoutLmInference:
 
         return encoding_chunks, words, boxes
 
-    def process_image(self, image_path):
-        if not self.apply_ocr:
+    def process_image_with_ocr(self, image_path):
+        if not self.apply_lm_ocr:
             return self.process_image_with_doctr_ocr(image_path)
         return self.process_image_with_lm_ocr(image_path)
 
-    def predict(self, image_path):
-        encoding_chunks, words, boxes = self.process_image(image_path)
+    def process_image(self, image_path, words, boxes):
+        image = Image.open(image_path).convert("RGB")
+        image_width, image_height = image.size
+        normalized_boxes = self.normalize_bboxes(boxes, image_width, image_height)
+        encoding_chunks = self.split_chunks(image, words, normalized_boxes)
+
+        return encoding_chunks
+
+    def predict(self, image_path, words=None, boxes=None):
+        if words is None and boxes is None:
+            encoding_chunks, words, boxes = self.process_image_with_ocr(image_path)
+        else:
+            encoding_chunks = self.process_image(image_path, words, boxes)
+
         ner_tags_predictions = []
 
         for encoding in encoding_chunks:
@@ -165,8 +206,14 @@ class LayoutLmInference:
 
         assert len(ner_tags_predictions) == len(words)
 
-        return {
+        words, boxes, ner_tags_predictions = self.predict_signatures(
+            image_path, words, boxes, ner_tags_predictions
+        )
 
+        if self.label_list:
+            ner_tags_predictions = self.remove_labels(ner_tags_predictions)
+
+        return {
             "tokens": words,
             "bboxes": boxes,
             "ner_tags": ner_tags_predictions
@@ -174,18 +221,20 @@ class LayoutLmInference:
 
     @staticmethod
     def draw_bboxes(image_path, predictions, add_text=False):
-        image = Image.open(image_path).convert("RGB")
-        draw = ImageDraw.Draw(image)
+        image = Image.open(image_path).convert("RGBA")
+        overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(overlay)
         font = ImageFont.load_default()
         for word, box, pred in zip(predictions["tokens"], predictions["bboxes"], predictions["ner_tags"]):
             if pred == "O":
                 continue
             pred = pred.split("-")[-1]
-            color = pii_entities_colors_names.get(pred, "black")
-            draw.rectangle(box, outline=color, width=2)
+            color = pii_entities_colors_rgba.get(pred, "black")
+            draw.rectangle(box, fill=color)
             if add_text:
                 draw.text((box[0], box[1] - 10), f"{pred}", font=font, fill=color)
-        return image
+        combined = Image.alpha_composite(image, overlay)
+        return combined
 
     def get_layoutlm_predictions(self, images, path_to_image, path_to_gt_labeled_images, labels_saving_path,
                                  image_views_path):
