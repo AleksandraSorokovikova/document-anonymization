@@ -3,7 +3,7 @@ import fitz
 import json
 import pybboxes as pbx
 from PIL import Image, ImageDraw, ImageFont
-from src.config import pii_entities_colors_names, pii_to_id, id_to_pii, layoutlm_ner_classes
+from src.config import pii_entities_colors_names, pii_to_id, id_to_pii, layoutlm_ner_classes, pii_entities_colors_rgba
 from src.process import convert_yolo_to_predictions
 from sklearn.model_selection import train_test_split
 from src.augmentation import Augmentation
@@ -19,8 +19,9 @@ from datasets import Image as datasetsImage
 
 
 def return_image_with_bounding_boxes(img_path, bboxes_path, zoom=1.0, b_type="txt"):
-    img = Image.open(img_path).convert("RGB")
-    draw = ImageDraw.Draw(img)
+    img = Image.open(img_path).convert("RGBA")
+    overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    draw = ImageDraw.Draw(overlay)
 
     if b_type == "txt":
         with open(bboxes_path, "r") as f:
@@ -46,10 +47,10 @@ def return_image_with_bounding_boxes(img_path, bboxes_path, zoom=1.0, b_type="tx
         class_name = id_to_pii.get(class_label, -1)
         if class_name == -1:
             continue
-        color = pii_entities_colors_names.get(class_name, "black")
-        draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
-
-    return img
+        color = pii_entities_colors_rgba.get(class_name, "black")
+        draw.rectangle([x0, y0, x1, y1], fill=color)
+    combined = Image.alpha_composite(img, overlay)
+    return combined
 
 
 def launch_augmentation(
@@ -58,7 +59,7 @@ def launch_augmentation(
         path_to_layoutlm_boxes,
         path_to_augmented_images,
         num_of_images=4,
-        zoom_range=(1.25, 1.8)
+        zoom_range=(1.35, 1.8)
 ):
     augmentation = Augmentation()
     os.makedirs(path_to_augmented_images, exist_ok=True)
@@ -190,23 +191,41 @@ def split_by_layout(mapping, train_val_ratio, val_test_ratio):
     return train_images, val_images, test_images
 
 
-def delete_signatures(label):
-    if "B-signature" in label["ner_tags"]:
-        signature_index = label["ner_tags"].index("B-signature")
-        label["tokens"].pop(signature_index)
-        label["bboxes"].pop(signature_index)
-        label["ner_tags"].pop(signature_index)
-    return label
+def delete_signatures(labels):
+    while "B-signature" in labels["ner_tags"]:
+        signature_index = labels["ner_tags"].index("B-signature")
+        labels["tokens"].pop(signature_index)
+        labels["bboxes"].pop(signature_index)
+        labels["ner_tags"].pop(signature_index)
+    return labels
+
+
+def add_payment_information(labels):
+    for i, ner_tag in enumerate(labels["ner_tags"]):
+        if ner_tag == "B-iban" or ner_tag == "B-credit_card_number":
+            labels["ner_tags"][i] = "B-payment_information"
+        elif ner_tag == "I-iban" or ner_tag == "I-credit_card_number":
+            labels["ner_tags"][i] = "I-payment_information"
+    return labels
+
+
+def delete_dates(labels):
+    for i, ner_tag in enumerate(labels["ner_tags"]):
+        if ner_tag == "B-dates" or ner_tag == "I-dates":
+            labels["ner_tags"][i] = "O"
+    return labels
 
 
 def split_layoutlm_dataset(
         path_to_folder,
         output_path,
         train_val_ratio=0.9,
+        val_test_ratio=0.95,
         new_ner_tags=None
 ):
     images_dir = os.path.join(path_to_folder, "images")
     labels_dir = os.path.join(path_to_folder, "layoutlm_labels")
+    unique_labels = set()
 
     ner_classes = layoutlm_ner_classes
     if new_ner_tags:
@@ -234,9 +253,15 @@ def split_layoutlm_dataset(
             label_data = json.load(f)
 
         label_data = delete_signatures(label_data)
+        label_data = add_payment_information(label_data)
+        label_data = delete_dates(label_data)
+
+        unique_labels.update(label_data["ner_tags"])
 
         assert len(label_data["tokens"]) == len(label_data["bboxes"]) == len(label_data["ner_tags"]), \
             f"Длины токенов, ббоксов и меток не совпадают для {img_file}"
+
+        assert "B-signature" not in label_data["ner_tags"], f"Подпись присутствует в {img_file}"
 
         data.append({
             "id": img_file.replace(".png", ""),
@@ -245,14 +270,19 @@ def split_layoutlm_dataset(
             "ner_tags": label_data["ner_tags"],
             "image": img_path,
         })
+
+    # if new_ner_tags is None:
+    #     assert unique_labels == set(layoutlm_ner_classes), "Метки не совпадают с ожидаемыми"
+
     random.shuffle(data)
 
     train_size = int(train_val_ratio * len(data))
-    val_size = int((1-train_val_ratio) / 2 * len(data))
+    val_size = int((1-train_val_ratio) * val_test_ratio * len(data))
 
     train_data = data[:train_size]
     val_data = data[train_size:train_size + val_size]
     test_data = data[train_size + val_size:]
+    print(f"Test size: {len(test_data)}")
 
     dataset = DatasetDict({
         "train": Dataset.from_list(train_data, features=features),
@@ -262,23 +292,24 @@ def split_layoutlm_dataset(
 
     dataset.save_to_disk(output_path)
 
+    os.makedirs(f"{output_path}/test_images", exist_ok=True)
     os.makedirs(f"{output_path}/test_labeled_images", exist_ok=True)
     os.makedirs(f"{output_path}/test_layoutlm_labels", exist_ok=True)
 
     for image in dataset["test"]["id"]:
         labeled_image = return_image_with_bounding_boxes(
-            f"{path_to_folder}/images/{image}",
-            f"{path_to_folder}/layoutlm_labels/{image.replace('.png', '.json')}",
+            f"{path_to_folder}/images/{image}.png",
+            f"{path_to_folder}/layoutlm_labels/{image}.json",
             b_type="layoutlm"
         )
         shutil.copy(
-            f"{path_to_folder}/images/{image}",
-            f"{output_path}/test_images/{image}",
+            f"{path_to_folder}/images/{image}.png",
+            f"{output_path}/test_images/{image}.png",
         )
-        labeled_image.save(f"{output_path}/test_labeled_images/{image}")
+        labeled_image.save(f"{output_path}/test_labeled_images/{image}.png")
 
     for image in dataset["test"]["id"]:
-        json_label = image.replace(".png", ".json")
+        json_label = image + ".json"
         shutil.copy(
             f"{path_to_folder}/layoutlm_labels/{json_label}",
             f"{output_path}/test_layoutlm_labels/{json_label}",

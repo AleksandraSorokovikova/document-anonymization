@@ -76,7 +76,7 @@ pii_classes = [
 
 pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
 id_to_pii = {i: pii["pii_id"] for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
-layoutlm_ner_classes = ['B-iban', 'I-full_name', 'B-company_name', 'O', 'I-credit_card_number', 'B-credit_card_number', 'I-address', 'I-dates', 'I-iban', 'B-address', 'I-phone_number', 'B-car_plate', 'B-dates', 'B-full_name', 'B-email_address', 'B-vin', 'I-company_name', 'B-phone_number', 'I-car_plate']
+layoutlm_ner_classes = ['B-payment_information', 'I-payment_information', 'B-full_name', 'I-full_name', 'B-company_name', 'I-company_name', 'O', 'B-address', 'I-address', 'B-phone_number', 'I-phone_number', 'B-car_plate', 'I-car_plate', 'B-email_address', 'B-vin']
 
 
 pii_names = [
@@ -219,6 +219,7 @@ pii_entities_colors_names = {
     "vin": "Lime",
     "car_plate": "Cyan",
     "invoice_id": "Aqua",
+    "payment_information": "Orange"
 }
 
 pii_entities_colors_rgba = {
@@ -330,6 +331,6 @@ subjects = [
 ]
 
 
-funsd_label_list = ["full_name", "dates", "phone_number", "address", "company_name", "email_address", "signature"]
-receipt_label_list = ["full_name", "dates", "phone_number", "address", "company_name", "signature"]
-invoices_label_list = ["full_name", "dates", "phone_number", "address", "company_name", "email_address", "invoice_id"]
+funsd_label_list = ["full_name", "phone_number", "address", "company_name", "email_address", "signature"]
+receipt_label_list = ["full_name", "phone_number", "address", "company_name", "signature"]
+invoices_label_list = ["full_name", "phone_number", "address", "company_name", "email_address", "invoice_id"]

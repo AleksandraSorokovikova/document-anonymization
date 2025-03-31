@@ -235,21 +235,19 @@ def prepare_dataset(
         remove_columns=column_names,
     )
 
-    # test_dataset = dataset["test"].map(
-    #     partial(
-    #         prepare_examples,
-    #         processor=processor,
-    #         image_column_name=image_column_name,
-    #         text_column_name=text_column_name,
-    #         boxes_column_name=boxes_column_name,
-    #         label_column_name=label_column_name,
-    #     ),
-    #     batched=True,
-    #     features=features,
-    #     remove_columns=column_names,
-    # )
-    test_dataset = None
-
+    test_dataset = dataset["test"].map(
+        partial(
+            prepare_examples,
+            processor=processor,
+            image_column_name=image_column_name,
+            text_column_name=text_column_name,
+            boxes_column_name=boxes_column_name,
+            label_column_name=label_column_name,
+        ),
+        batched=True,
+        features=features,
+        remove_columns=column_names,
+    )
 
     return train_dataset, eval_dataset, test_dataset, processor, id2label, label2id, label_list
 

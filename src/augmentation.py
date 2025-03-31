@@ -34,7 +34,7 @@ class Augmentation:
 
     @staticmethod
     def apply_compression(
-            image: np.ndarray, bboxes: list = None, quality_range: tuple = (30, 45)
+            image: np.ndarray, bboxes: list = None, quality_range: tuple = (35, 45)
     ) -> (np.ndarray, list):
         quality = random.randint(quality_range[0], quality_range[1])
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
@@ -127,7 +127,7 @@ class Augmentation:
 
     @staticmethod
     def apply_brightness_contrast(
-            image: np.ndarray, bboxes: list = None, brightness_range: tuple = (50, 100), contrast_range: tuple = (75, 150)
+            image: np.ndarray, bboxes: list = None, brightness_range: tuple = (60, 100), contrast_range: tuple = (75, 150)
     ) -> (np.ndarray, list):
         brightness = random.uniform(brightness_range[0], brightness_range[1])
         contrast = random.uniform(contrast_range[0], contrast_range[1])
@@ -138,7 +138,7 @@ class Augmentation:
 
     @staticmethod
     def apply_lighting_effects(
-            image: np.ndarray, bboxes: list = None, intensity_range: tuple = (0.4, 0.7)
+            image: np.ndarray, bboxes: list = None, intensity_range: tuple = (0.5, 0.7)
     ) -> (np.ndarray, list):
         rows, cols = image.shape[:2]
 

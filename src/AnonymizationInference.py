@@ -236,8 +236,9 @@ class AnonymizationInference:
         combined = Image.alpha_composite(image, overlay)
         return combined
 
-    def get_layoutlm_predictions(self, images, path_to_image, path_to_gt_labeled_images, labels_saving_path,
-                                 image_views_path):
+    def get_layoutlm_predictions(
+            self, images, path_to_image, path_to_gt_labeled_images, labels_saving_path, image_views_path
+    ):
         for image in tqdm(images):
             if not image.endswith(".png"):
                 continue
