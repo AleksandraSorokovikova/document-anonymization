@@ -459,7 +459,7 @@ def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_thre
     return metrics
 
 
-def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5):
+def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5, entities_to_exclude=None):
     """
     Вычисляет метрики общего покрытия для одного документа.
 
@@ -484,8 +484,6 @@ def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5):
          "total_pred": ...
        }
     """
-
-    entities_to_exclude = ["signature", "dates", "iban", "credit_card_number", "vin", "car_plate"]
 
     gt_entities = extract_token_entities(gt_doc, entities_to_exclude=entities_to_exclude)
     pred_entities = extract_token_entities(pred_doc, entities_to_exclude=entities_to_exclude)

@@ -38,6 +38,7 @@ def prepare_examples(
         examples, processor, image_column_name, text_column_name, boxes_column_name, label_column_name
 ):
     images = examples[image_column_name]
+    images = [img.convert("RGB") for img in images]
     words = examples[text_column_name]
     boxes = examples[boxes_column_name]
     word_labels = examples[label_column_name]
@@ -260,7 +261,8 @@ def prepare_trainer(
         max_steps=1000,
         learning_rate=1e-5,
         eval_steps=100,
-        return_entity_level_metrics=False
+        return_entity_level_metrics=False,
+        already_trained=False,
 ):
     metric = load("seqeval")
 
@@ -268,8 +270,11 @@ def prepare_trainer(
         path_to_dataset, processor_name=processor_name
     )
 
-    model = LayoutLMv3ForTokenClassification.from_pretrained(
-        model_name, id2label=id2label, label2id=label2id
+    if already_trained:
+        model = LayoutLMv3ForTokenClassification.from_pretrained(model_name)
+    else:
+        model = LayoutLMv3ForTokenClassification.from_pretrained(
+            model_name, id2label=id2label, label2id=label2id
     )
 
     training_args = TrainingArguments(
