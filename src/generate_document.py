@@ -138,7 +138,7 @@ class PIIGenerator:
 
     def __init__(
             self,
-            output_folder="output",
+            output_folder="dataset",
             path_to_pii_values="pii_values.json",
             number_of_entities=None,
             generate_new=False,
@@ -819,7 +819,7 @@ class PIIGenerator:
 
         latex_content = "\\thispagestyle{empty}\n" + latex_content
 
-        max_y = self.get_max_y(latex_content, file_name) if not find_max_y else None
+        max_y = self.get_max_y(latex_content, file_name) if find_max_y else None
 
         if not output_folder:
             output_folder = self.output_folder

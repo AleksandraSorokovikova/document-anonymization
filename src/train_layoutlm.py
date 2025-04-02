@@ -175,9 +175,89 @@ def compute_metrics(p, label_list, metric, return_entity_level_metrics):
         }
 
 
+# from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+
+# def compute_token_metrics(p, label_list):
+#     predictions, labels = p
+#     predictions = np.argmax(predictions, axis=2)
+
+#     true_labels_flat = []
+#     pred_labels_flat = []
+
+#     for pred_seq, label_seq in zip(predictions, labels):
+#         for p, l in zip(pred_seq, label_seq):
+#             if l != -100:
+#                 pred_labels_flat.append(p)
+#                 true_labels_flat.append(l)
+
+#     precision = precision_score(true_labels_flat, pred_labels_flat, average="micro", zero_division=0)
+#     recall = recall_score(true_labels_flat, pred_labels_flat, average="micro", zero_division=0)
+#     f1 = f1_score(true_labels_flat, pred_labels_flat, average="micro", zero_division=0)
+#     accuracy = accuracy_score(true_labels_flat, pred_labels_flat)
+
+#     return {
+#         "precision": precision,
+#         "recall": recall,
+#         "f1": f1,
+#         "accuracy": accuracy,
+#     }
+
+
+# def compute_metrics(p, label_list, metric, return_entity_level_metrics=False):
+#     import numpy as np
+
+#     def normalize(label):
+#         if label == "O":
+#             return "O"
+#         entity = label.split("-")[-1]  # full_name → full_name, B-full_name → full_name
+#         return f"B-{entity}"           # всегда делаем B-entity
+
+#     predictions, labels = p
+#     predictions = np.argmax(predictions, axis=2)
+
+#     true_predictions = []
+#     true_labels = []
+
+#     for pred, label in zip(predictions, labels):
+#         pred_labels = []
+#         true_label_seq = []
+#         for p_val, l_val in zip(pred, label):
+#             if l_val != -100:
+#                 if p_val < len(label_list) and l_val < len(label_list):
+#                     pred_label = normalize(label_list[p_val])
+#                     true_label = normalize(label_list[l_val])
+#                     pred_labels.append(pred_label)
+#                     true_label_seq.append(true_label)
+#         true_predictions.append(pred_labels)
+#         true_labels.append(true_label_seq)
+
+#     results = metric.compute(predictions=true_predictions, references=true_labels)
+
+#     if return_entity_level_metrics:
+#         # Расплющиваем метрики по сущностям
+#         flat_results = {}
+#         for key, value in results.items():
+#             if isinstance(value, dict):
+#                 for sub_key, score in value.items():
+#                     flat_results[f"{key}_{sub_key}"] = score
+#             else:
+#                 flat_results[key] = value
+#         return flat_results
+#     else:
+#         return {
+#             "precision": results.get("overall_precision", 0.0),
+#             "recall": results.get("overall_recall", 0.0),
+#             "f1": results.get("overall_f1", 0.0),
+#             "accuracy": results.get("overall_accuracy", 0.0),
+#         }
+
+
 def prepare_dataset(
         path_to_dataset,
         processor_name="microsoft/layoutlmv3-base",
+        label_list=None,
+        id2label=None,
+        label2id=None,
 ):
     dataset = load_from_disk(path_to_dataset)
     processor = AutoProcessor.from_pretrained(processor_name, apply_ocr=False)
@@ -189,16 +269,15 @@ def prepare_dataset(
     boxes_column_name = "bboxes"
     label_column_name = "ner_tags"
 
-
-    if isinstance(features[label_column_name].feature, ClassLabel):
-        label_list = features[label_column_name].feature.names
-        id2label = {k: v for k, v in enumerate(label_list)}
-        label2id = {v: k for k, v in enumerate(label_list)}
-    else:
-        label_list = get_label_list(dataset["train"][label_column_name])
-        id2label = {k: v for k, v in enumerate(label_list)}
-        label2id = {v: k for k, v in enumerate(label_list)}
-    num_labels = len(label_list)
+    if label_list is None:
+        if isinstance(features[label_column_name].feature, ClassLabel):
+            label_list = features[label_column_name].feature.names
+            id2label = {k: v for k, v in enumerate(label_list)}
+            label2id = {v: k for k, v in enumerate(label_list)}
+        else:
+            label_list = get_label_list(dataset["train"][label_column_name])
+            id2label = {k: v for k, v in enumerate(label_list)}
+            label2id = {v: k for k, v in enumerate(label_list)}
 
     features = Features({
         'pixel_values': Array3D(dtype="float32", shape=(3, 224, 224)),
@@ -258,35 +337,68 @@ def prepare_trainer(
         path_to_model_weights,
         model_name="microsoft/layoutlmv3-base",
         processor_name="microsoft/layoutlmv3-base",
-        max_steps=1000,
+        num_train_epochs=10,
         learning_rate=1e-5,
-        eval_steps=100,
         return_entity_level_metrics=False,
         already_trained=False,
+        metric_for_best_model="f1",
+        per_device_train_batch_size=4,
+        new_labels=None,
+        layers_to_train=[10, 11],
 ):
     metric = load("seqeval")
 
-    train_dataset, eval_dataset, test_dataset, processor, id2label, label2id, label_list = prepare_dataset(
-        path_to_dataset, processor_name=processor_name
-    )
+    label_list = None
+    id2label = None
+    label2id = None
 
     if already_trained:
         model = LayoutLMv3ForTokenClassification.from_pretrained(model_name)
-    else:
+        label_list = list(model.config.id2label.values())
+
+        if new_labels is not None:
+            label_list += new_labels
+            id2label = {k: v for k, v in enumerate(label_list)}
+            label2id = {v: k for k, v in enumerate(label_list)}
+            print(label_list)
+            model = LayoutLMv3ForTokenClassification.from_pretrained(
+                model_name, id2label=id2label, label2id=label2id, ignore_mismatched_sizes=True
+            )
+        else:
+            id2label = model.config.id2label
+            label2id = model.config.label2id
+
+        # for param in model.base_model.parameters():
+        #     param.requires_grad = False
+
+        for name, param in model.base_model.named_parameters():
+            if any(f"encoder.layer.{i}" in name for i in layers_to_train):
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+
+    train_dataset, eval_dataset, test_dataset, processor, id2label, label2id, label_list = prepare_dataset(
+        path_to_dataset, processor_name=processor_name, label_list=label_list, id2label=id2label, label2id=label2id
+    )
+    print(label_list)
+
+    if not already_trained:
         model = LayoutLMv3ForTokenClassification.from_pretrained(
             model_name, id2label=id2label, label2id=label2id
-    )
+        )
 
     training_args = TrainingArguments(
         output_dir=path_to_model_weights,
-        max_steps=max_steps,
-        per_device_train_batch_size=2,
+        # max_steps=max_steps,
+        num_train_epochs=num_train_epochs,
+        per_device_train_batch_size=per_device_train_batch_size,
         per_device_eval_batch_size=2,
         learning_rate=learning_rate,
-        evaluation_strategy="steps",
-        eval_steps=eval_steps,
+        evaluation_strategy='epoch',
+        save_strategy='epoch',
+        # eval_steps=eval_steps,
         load_best_model_at_end=True,
-        metric_for_best_model="recall"
+        metric_for_best_model=metric_for_best_model,
     )
 
     trainer = Trainer(

@@ -188,10 +188,20 @@ class AnonymizationInference:
 
         return encoding_chunks
 
+    def clean_words(self, words, boxes):
+        cleaned_words = []
+        cleaned_boxes = []
+        for word, box in zip(words, boxes):
+            if word != "":
+                cleaned_words.append(word)
+                cleaned_boxes.append(box)
+        return cleaned_words, cleaned_boxes
+
     def predict(self, image_path, words=None, boxes=None):
         if words is None and boxes is None:
             encoding_chunks, words, boxes = self.process_image_with_ocr(image_path)
         else:
+            words, boxes = self.clean_words(words, boxes)
             encoding_chunks = self.process_image(image_path, words, boxes)
 
         ner_tags_predictions = []
@@ -204,7 +214,7 @@ class AnonymizationInference:
             predictions = self.convert_tokens_to_words(word_ids, token_predictions)
             ner_tags_predictions.extend(predictions)
 
-        assert len(ner_tags_predictions) == len(words)
+        assert len(ner_tags_predictions) == len(words), f"{len(ner_tags_predictions)} != {len(words)} in {image_path}"
 
         words, boxes, ner_tags_predictions = self.predict_signatures(
             image_path, words, boxes, ner_tags_predictions
@@ -237,14 +247,26 @@ class AnonymizationInference:
         return combined
 
     def get_layoutlm_predictions(
-            self, images, path_to_image, path_to_gt_labeled_images, labels_saving_path, image_views_path
+            self, images, path_to_image, path_to_gt_labeled_images, labels_saving_path, image_views_path,
+            path_to_gt_labels=None,
     ):
         for image in tqdm(images):
+
             if not image.endswith(".png"):
                 continue
 
             image_path = os.path.join(path_to_image, image)
-            predictions = self.predict(image_path)
+
+            if path_to_gt_labels:
+                with open(os.path.join(path_to_gt_labels, image.replace(".png", ".json"))) as f:
+                    gt_labels = json.load(f)
+                words = gt_labels["tokens"]
+                boxes = gt_labels["bboxes"]
+
+                predictions = self.predict(image_path, words, boxes)
+            else:
+                predictions = self.predict(image_path)
+
             img_with_pred_bboxes = self.draw_bboxes(image_path, predictions)
             img_with_gt_bboxes = Image.open(os.path.join(path_to_gt_labeled_images, image))
             create_image_view(img_with_gt_bboxes, img_with_pred_bboxes, f"{image_views_path}/{image}")

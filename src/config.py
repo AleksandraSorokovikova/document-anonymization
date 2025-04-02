@@ -72,6 +72,16 @@ pii_classes = [
         "pii_id": "middle_name",
         "prompt": GENERATE_MIDDLE_NAMES_SYSTEM_PROMPT,
     },
+    {
+        "class": "Invoice ID",
+        "pii_id": "invoice_id",
+        "prompt": GENERATE_MIDDLE_NAMES_SYSTEM_PROMPT,
+    },
+    {
+        "class": "Payment Information",
+        "pii_id": "payment_information",
+        "prompt": GENERATE_MIDDLE_NAMES_SYSTEM_PROMPT,
+    },
 ]
 
 pii_to_id = {pii["pii_id"]: i for i, pii in enumerate(pii_classes) if pii["pii_id"] != "middle_name"}
@@ -202,6 +212,8 @@ pii_entities_colors = {
     "full_name": (1, 0, 1),  # Fuchsia
     "vin": (0, 1, 0),  # Lime
     "car_plate": (0, 1, 1),  # Cyan
+    "invoice_id": (0, 1, 1),  # Aqua (same as Cyan)
+    "payment_information": (1, 0.5, 0)  # Orange
 }
 
 pii_entities_colors_names = {
@@ -237,6 +249,7 @@ pii_entities_colors_rgba = {
     'vin': (0, 255, 0, 60),                  # Lime
     'car_plate': (0, 255, 255, 60),          # Cyan
     'invoice_id': (0, 255, 255, 60),         # Aqua (same as Cyan)
+    'payment_information': (255, 165, 0, 60) # Orange
 }
 
 

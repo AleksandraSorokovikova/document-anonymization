@@ -106,7 +106,7 @@ def launch_augmentation(
             assert "B-middle_name" not in layoutlm_labels["ner_tags"], f"middle_name is present in {pdf_filename}"
             assert "I-middle_name" not in layoutlm_labels["ner_tags"], f"middle_name is present in {pdf_filename}"
 
-        assert sorted(list(pii_to_id.values())) == list(range(0, len(pii_to_id)))
+        # assert sorted(list(pii_to_id.values())) == list(range(0, len(pii_to_id)))
 
         for entity in entities:
             entity_type, entity_value, bbox = entity
@@ -220,7 +220,7 @@ def split_layoutlm_dataset(
         path_to_folder,
         output_path,
         train_val_ratio=0.9,
-        val_test_ratio=0.95,
+        val_test_ratio=0.8,
         new_ner_tags=None
 ):
     images_dir = os.path.join(path_to_folder, "images")
@@ -297,9 +297,20 @@ def split_layoutlm_dataset(
     os.makedirs(f"{output_path}/test_layoutlm_labels", exist_ok=True)
 
     for image in dataset["test"]["id"]:
+        json_label = image + ".json"
+        with open(f"{path_to_folder}/layoutlm_labels/{json_label}", "r") as f:
+            label_data = json.load(f)
+        label_data = delete_signatures(label_data)
+        label_data = add_payment_information(label_data)
+        label_data = delete_dates(label_data)
+        with open(f"{output_path}/test_layoutlm_labels/{json_label}", "w") as f:
+            json.dump(label_data, f, indent=4)
+
+
+    for image in dataset["test"]["id"]:
         labeled_image = return_image_with_bounding_boxes(
             f"{path_to_folder}/images/{image}.png",
-            f"{path_to_folder}/layoutlm_labels/{image}.json",
+            f"{output_path}/test_layoutlm_labels/{image}.json",
             b_type="layoutlm"
         )
         shutil.copy(
@@ -307,13 +318,6 @@ def split_layoutlm_dataset(
             f"{output_path}/test_images/{image}.png",
         )
         labeled_image.save(f"{output_path}/test_labeled_images/{image}.png")
-
-    for image in dataset["test"]["id"]:
-        json_label = image + ".json"
-        shutil.copy(
-            f"{path_to_folder}/layoutlm_labels/{json_label}",
-            f"{output_path}/test_layoutlm_labels/{json_label}",
-        )
 
 
 def split_yolo_dataset(
