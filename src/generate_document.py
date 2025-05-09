@@ -768,19 +768,20 @@ class PIIGenerator:
         return latex_content
 
     def get_max_y(self, latex_content, file_name):
+        temp_filename = file_name.replace(".pdf", ".tex")
         self.compile_latex(
-            latex_content, os.path.join(self.output_folder, "original"), f"{file_name}_temp.pdf"
+            latex_content, os.path.join(self.output_folder, "original"), f"{temp_filename}_temp.pdf"
         )
-        old_pdf = fitz.open(os.path.join(self.output_folder, "original", f"{file_name}_temp.pdf"))
+        old_pdf = fitz.open(os.path.join(self.output_folder, "original", f"{temp_filename}_temp.pdf"))
         if old_pdf.page_count < 1:
-            os.remove(os.path.join(self.output_folder, "original", f"{file_name}_temp.pdf"))
+            os.remove(os.path.join(self.output_folder, "original", f"{temp_filename}_temp.pdf"))
             raise Exception("Empty PDF")
         page = old_pdf[0]
         blocks = page.get_text("blocks")
         max_block = blocks[-1] if blocks[-1][4] != '1\n' else blocks[-2]
         max_y = max_block[3]
         old_pdf.close()
-        os.remove(os.path.join(self.output_folder, "original", f"{file_name}_temp.pdf"))
+        os.remove(os.path.join(self.output_folder, "original", f"{temp_filename}_temp.pdf"))
         return max_y
 
     def create_pdf_from_latex(
@@ -844,6 +845,7 @@ class PIIGenerator:
         return clipped_bboxes
 
     def create_document(self, doc_format, path=None, doc_img_folder_path=None):
+        os.makedirs(os.path.join(self.output_folder, "layoutlm_labels"), exist_ok=True)
         if doc_format == "html":
             html_content, document_meta_info, random_pii_values = (
                 self.generate_html_document()
@@ -889,7 +891,7 @@ class PIIGenerator:
                 "annotated",
                 f"{file_name.replace('.pdf', '_annotated.pdf')}",
             ),
-            incremental=True,
+            incremental=False,
             encryption=fitz.PDF_ENCRYPT_KEEP
         )
 
