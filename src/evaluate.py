@@ -20,7 +20,6 @@ def iou(boxA, boxB):
 
     boxA_area = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
     boxB_area = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
-
     unionArea = boxA_area + boxB_area - interArea
     if unionArea == 0:
         return 0.0
@@ -240,13 +239,6 @@ def create_markdown_report(df_results, model_metadata, output_path):
 
 
 def measure_inference_time(model, test_images):
-    """
-    Измеряет среднее время инференса на одно изображение.
-
-    :param model: Модель (например, YOLO, LayoutLM, DETR)
-    :param test_images: Список изображений для инференса
-    :return: Среднее время инференса (в секундах)
-    """
     times = []
 
     for img in test_images:
@@ -261,20 +253,12 @@ def measure_inference_time(model, test_images):
 
 
 def compute_area(box):
-    """
-    Вычисляет площадь bbox.
-    box: [x_min, y_min, x_max, y_max]
-    """
     width = max(0, box[2] - box[0])
     height = max(0, box[3] - box[1])
     return width * height
 
 
 def compute_intersection(boxA, boxB):
-    """
-    Вычисляет площадь пересечения двух bbox.
-    Формат: [x_min, y_min, x_max, y_max].
-    """
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[2], boxB[2])
@@ -300,21 +284,6 @@ def extract_token_entities(doc, entities_to_exclude=None):
 
 
 def calculate_layoutlm_metrics_single(gt_doc, pred_doc, coverage_threshold=0.7):
-    """
-    Считает precision, recall, F1 для одного документа, проверяя покрытие
-    только со стороны ground truth bbox.
-
-    Алгоритм:
-      - Recall: для каждого gt bbox проверяем, есть ли предсказанный bbox,
-        который покрывает этот gt bbox не менее чем на coverage_threshold
-        (intersection(gt, pred) / area(gt) >= coverage_threshold).
-        Если есть — TP, иначе — FN.
-
-      - Precision: для каждого предсказанного bbox проверяем, есть ли
-        ground truth bbox, который покрывается им на coverage_threshold
-        (intersection(gt, pred) / area(gt) >= coverage_threshold).
-        Если есть — «корректное предсказание», иначе — FP.
-    """
     gt_entities = extract_token_entities(gt_doc)
     pred_entities = extract_token_entities(pred_doc)
 
@@ -372,11 +341,6 @@ def calculate_layoutlm_metrics_single(gt_doc, pred_doc, coverage_threshold=0.7):
 
 
 def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5):
-    """
-    Считает метрики для набора документов, суммируя TP, FP, FN по всем документам,
-    а затем вычисляя итоговые precision, recall и F1 для каждой категории.
-    """
-    # Сначала собираем все bbox'ы по документам
     all_gt = []
     all_pred = []
     for gt_doc, pred_doc in zip(list_gt_docs, list_pred_docs):
@@ -386,12 +350,6 @@ def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_thre
     categories = set([e["type"] for e in all_gt] + [e["type"] for e in all_pred])
     counts = {cat: {"TP": 0, "FN": 0, "FP": 0, "total_gt": 0, "total_pred": 0} for cat in categories}
 
-    # Разбиваем на списки per документ, чтобы корректно считать TP/FN/FP
-    # Но если нужно всё смешать, можно считать, что это единый пул.
-    # Ниже сделаем "глобально" по всем bboxes (как один большой документ).
-    # Если нужен подсчёт по каждому документу отдельно, нужно повторять логику, как в calculate_metrics_single.
-
-    # --- "Глобальный" подсчёт: ---
     for cat in categories:
         gt_cat = [e for e in all_gt if e["type"] == cat]
         pred_cat = [e for e in all_pred if e["type"] == cat]
@@ -430,7 +388,6 @@ def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_thre
         counts[cat]["total_gt"] = len(gt_cat)
         counts[cat]["total_pred"] = len(pred_cat)
 
-    # Вычисляем финальные метрики
     metrics = {}
     for cat, c in counts.items():
         TP = c["TP"]
@@ -460,35 +417,10 @@ def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_thre
 
 
 def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5, entities_to_exclude=None):
-    """
-    Вычисляет метрики общего покрытия для одного документа.
-
-    Алгоритм:
-      - Для каждого bbox из ground truth (вне зависимости от категории) проверяется,
-        покрыт ли он хотя бы одним предсказанным bbox (той же или любой категории)
-        по условию: (intersection(gt, pred) / area(gt)) >= coverage_threshold.
-        Если да — считается TP, иначе — FN.
-      - Для каждого предсказанного bbox, если не найден ни один ground truth bbox,
-        для которого (intersection(gt, pred) / area(gt)) >= coverage_threshold,
-        предсказание считается ложноположительным (FP).
-
-    Возвращает словарь с метриками:
-       {
-         "precision": ...,
-         "recall": ...,
-         "f1": ...,
-         "TP": ...,
-         "FN": ...,
-         "FP": ...,
-         "total_gt": ...,
-         "total_pred": ...
-       }
-    """
 
     gt_entities = extract_token_entities(gt_doc, entities_to_exclude=entities_to_exclude)
     pred_entities = extract_token_entities(pred_doc, entities_to_exclude=entities_to_exclude)
 
-    # Расчёт TP и FN (для recall)
     TP = 0
     for gt in gt_entities:
         gt_area = compute_area(gt["bbox"])
@@ -502,7 +434,6 @@ def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5, e
             TP += 1
     FN = len(gt_entities) - TP
 
-    # Расчёт корректных предсказаний и FP (для precision)
     correct_pred = 0
     for pred in pred_entities:
         valid = False
@@ -528,7 +459,6 @@ def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5, e
         "FN": FN,
         "FP": FP,
         "total_gt": len(gt_entities),
-        # "total_pred": len(pred_entities)
     }
     return overall
 
@@ -605,7 +535,6 @@ def count_all_layoutlm_metrics(path_to_gt: str, labels_folder: str, class_names:
 
     metrics_batch = calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5)
 
-    # delete metrics for categories that are not in the dataset
     for cat in list(metrics_batch.keys()):
         if cat not in metrics:
             del metrics_batch[cat]

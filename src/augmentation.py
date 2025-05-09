@@ -168,18 +168,9 @@ class Augmentation:
 
     @staticmethod
     def rotate_bbox(bbox, angle, image_shape):
-        """
-        Поворачивает bounding box на угол angle вокруг центра изображения.
-
-        :param bbox: (x_min, y_min, x_max, y_max) - координаты исходного bbox
-        :param angle: угол поворота в градусах (по часовой стрелке)
-        :param image_shape: (H, W) - размеры изображения
-        :return: (x_min', y_min', x_max', y_max') - новый bbox
-        """
         H, W = image_shape[:2]
-        cx, cy = W / 2, H / 2  # Центр изображения
+        cx, cy = W / 2, H / 2
 
-        # Углы bbox
         x_min, y_min, x_max, y_max = bbox
         points = np.array([
             [x_min, y_min],
@@ -188,19 +179,15 @@ class Augmentation:
             [x_min, y_max]
         ])
 
-        # Угол в радианы
         theta = np.radians(angle)
 
-        # Матрица поворота
         rotation_matrix = np.array([
             [np.cos(theta), -np.sin(theta)],
             [np.sin(theta), np.cos(theta)]
         ])
 
-        # Поворачиваем точки bbox вокруг центра изображения
         rotated_points = np.dot(points - np.array([cx, cy]), rotation_matrix.T) + np.array([cx, cy])
 
-        # Новый bbox
         x_min_new, y_min_new = np.min(rotated_points, axis=0)
         x_max_new, y_max_new = np.max(rotated_points, axis=0)
 
@@ -210,15 +197,9 @@ class Augmentation:
     def apply_rotation(
             image: np.ndarray, bboxes: list = None, angle_range: tuple = (-0.5, 0.5)
     ) -> (np.ndarray, list):
-        """
-        Rotate the image by a random angle (from angle_range) and update bounding boxes if provided.
-        The bounding boxes are expected to have the following structure:
-            [ label, text, [x_min, y_min, x_max, y_max] ]
-        """
         angle = random.uniform(angle_range[0], angle_range[1])
         (h, w) = image.shape[:2]
         center = (w / 2, h / 2)
-        # Create rotation matrix; use a white border for areas that become empty.
         M = cv2.getRotationMatrix2D(center, angle, 1.0)
         rotated = cv2.warpAffine(image, M, (w, h), borderValue=(255, 255, 255))
 
@@ -228,30 +209,23 @@ class Augmentation:
     def resize_and_paste(
             image: np.ndarray, bboxes: list = None, scale_range: tuple = (0.7, 0.95)
     ) -> (np.ndarray, list):
-        """
-        Scale down the image by a random factor (from scale_range) and paste it onto a white background
-        at a random location. Adjusts bounding boxes accordingly.
-        """
         (h, w) = image.shape[:2]
         scale = random.uniform(scale_range[0], scale_range[1])
         new_w = int(w * scale)
         new_h = int(h * scale)
         resized = cv2.resize(image, (new_w, new_h))
 
-        # Create a white background image (same size as the original)
         if len(image.shape) == 3:
             channels = image.shape[2]
         else:
             channels = 1
         background = np.full((h, w, channels), 255, dtype=image.dtype)
 
-        # Determine a random offset so that the resized image fits inside the background
         max_x = w - new_w
         max_y = h - new_h
         offset_x = random.randint(0, max_x)
         offset_y = random.randint(0, max_y)
 
-        # Paste the resized image onto the background
         background[offset_y:offset_y + new_h, offset_x:offset_x + new_w] = resized
 
         if bboxes is None:
@@ -269,7 +243,6 @@ class Augmentation:
                     label = None
                 else:
                     label, coords = bbox[0], bbox[1:]
-                # Scale the coordinates and add the offset.
                 new_coords = [
                     coords[0] * scale + offset_x,
                     coords[1] * scale + offset_y,
@@ -291,35 +264,27 @@ class Augmentation:
         augmented = image.copy()
         h, w = augmented.shape[:2]
 
-        # Choose a random number of lines to draw (e.g., between 1 and 5).
         num_lines = random.randint(2, 6)
 
         for i in range(num_lines):
-            # Choose a random center in the upper half of the image.
             cx = random.randint(w // 8, 7 * w // 8)
             cy = random.randint(0, h // 2)
 
-            # Choose a random line length between 1/4 and 1/2 of the image width.
             length = random.randint(w // 4, w // 2)
 
-            # Choose a random angle between -45 and 45 degrees.
             angle_deg = random.uniform(-45, 45) if i % 2 == 0 else 0
             angle_rad = np.deg2rad(angle_deg)
 
-            # Calculate the endpoints using the center, length, and angle.
             dx = int((length / 2) * np.cos(angle_rad))
             dy = int((length / 2) * np.sin(angle_rad))
             pt1 = (cx - dx, cy - dy)
             pt2 = (cx + dx, cy + dy)
 
-            # Random color: dark grey to near black.
             color_val = random.randint(0, 80)
             color = (color_val, color_val, color_val) if len(augmented.shape) == 3 else color_val
 
-            # Random line thickness.
             thickness = random.randint(1, 3)
 
-            # Draw the line.
             cv2.line(augmented, pt1, pt2, color, thickness)
 
         return augmented, bboxes

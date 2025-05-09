@@ -3,8 +3,9 @@ import fitz
 import json
 import pybboxes as pbx
 from PIL import Image, ImageDraw, ImageFont
+from sympy.core.random import shuffle
+
 from src.config import pii_entities_colors_names, pii_to_id, id_to_pii, layoutlm_ner_classes, pii_entities_colors_rgba
-from src.process import convert_yolo_to_predictions
 from sklearn.model_selection import train_test_split
 from src.augmentation import Augmentation
 import cv2
@@ -69,8 +70,11 @@ def launch_augmentation(
     labels = {}
     mapping = defaultdict(list)
     all_images = []
+    original_pdfs = os.listdir(path_to_original_pdfs)
+    shuffle(original_pdfs)
+    original_pdfs = original_pdfs[:100]
 
-    for pdf_filename in tqdm(os.listdir(path_to_original_pdfs)):
+    for pdf_filename in tqdm(original_pdfs):
         if not pdf_filename.endswith(".pdf"):
             continue
         pdf_name_without_ext = os.path.splitext(pdf_filename)[0]
@@ -80,7 +84,7 @@ def launch_augmentation(
         entity_layoutlm_path = os.path.join(path_to_layoutlm_boxes, entity_layoutlm_filename)
 
         if not os.path.exists(entity_json_path):
-            # print(f"Skipping {pdf_filename}: No corresponding entity JSON found.")
+            print(f"Skipping {pdf_filename}: No corresponding entity JSON found.")
             continue
 
         zoom = random.uniform(*zoom_range)
@@ -105,8 +109,6 @@ def launch_augmentation(
             assert layoutlm_labels is not None, f"layoutlm_labels is None for {pdf_filename}"
             assert "B-middle_name" not in layoutlm_labels["ner_tags"], f"middle_name is present in {pdf_filename}"
             assert "I-middle_name" not in layoutlm_labels["ner_tags"], f"middle_name is present in {pdf_filename}"
-
-        # assert sorted(list(pii_to_id.values())) == list(range(0, len(pii_to_id)))
 
         for entity in entities:
             entity_type, entity_value, bbox = entity
@@ -271,9 +273,6 @@ def split_layoutlm_dataset(
             "image": img_path,
         })
 
-    # if new_ner_tags is None:
-    #     assert unique_labels == set(layoutlm_ner_classes), "Метки не совпадают с ожидаемыми"
-
     random.shuffle(data)
 
     train_size = int(train_val_ratio * len(data))
@@ -320,99 +319,6 @@ def split_layoutlm_dataset(
         labeled_image.save(f"{output_path}/test_labeled_images/{image}.png")
 
 
-def split_yolo_dataset(
-        path_to_folder,
-        output_folder,
-        train_val_ratio = 0.8,
-        val_test_ratio = 0.9,
-        split_strategy="random"
-):
-    os.makedirs(output_folder, exist_ok=True)
-    for folder in ["images", "labels"]:
-        os.makedirs(os.path.join(output_folder, folder), exist_ok=True)
-        for split in ["train", "val", "test"]:
-            os.makedirs(os.path.join(output_folder, folder, split))
-
-    with open(os.path.join(path_to_folder, "mapping.json"), "r") as f:
-        mapping = json.load(f)
-
-    if split_strategy == "random":
-        train, test = train_test_split(list(mapping.values()), train_size=train_val_ratio, random_state=42)
-        validation, test = train_test_split(test, train_size=val_test_ratio, random_state=42)
-    elif split_strategy == "layout":
-        train, validation, test = split_by_layout(mapping, train_val_ratio, val_test_ratio)
-    else:
-        raise ValueError("Invalid split strategy. Choose between 'random' and 'layout'.")
-
-    """
-    dataset/  # This is the 'path' in your custom.yaml
-    ├── images/
-    │   ├── train/
-    │   │   ├── image1.jpg
-    │   │   ├── image2.jpg
-    │   │   └── ...
-    │   └── val/
-    │       ├── image101.jpg
-    │       ├── image102.jpg
-    │       └── ...
-    └── labels/
-        ├── train/
-        │   ├── image1.txt
-        │   ├── image2.txt
-        │   └── ...
-        └── val/
-            ├── image101.txt
-            ├── image102.txt
-            └── ...
-    """
-    for split, images_split in zip(["train", "val", "test"], [train, validation, test]):
-        for images in tqdm(images_split):
-            if split == "train":
-                images_to_copy = images
-            else:
-                images_to_copy = [random.choice(images)]
-
-            for image in images_to_copy:
-                try:
-                    image_path = os.path.join(path_to_folder, "images", image)
-                    label_path = os.path.join(path_to_folder, "labels", image.replace(".png", ".txt"))
-
-                    img = Image.open(image_path)
-                    img_width, img_height = img.size
-
-                    with open(label_path, 'r') as f:
-                        label = f.readlines()
-                        bboxes = [list(map(float, line.strip().split())) for line in label]
-                        bboxes = [[int(cls_id)] + coords for cls_id, *coords in bboxes]
-
-                    converted_bboxes = []
-                    for bbox in bboxes:
-                        converted_bboxes.append([bbox[0]] + [c for c in pbx.convert_bbox(
-                            (bbox[1], bbox[2], bbox[3], bbox[4]),
-                            from_type="voc",
-                            to_type="yolo",
-                            image_size=(img_width, img_height),
-                        )])
-
-                    with open(os.path.join(output_folder, "labels", split, f"{image.replace('.png', '.txt')}"), "w") as f:
-                        for bbox in converted_bboxes:
-                            f.write(" ".join(map(str, bbox)) + "\n")
-
-                    os.system(f"cp {image_path} {os.path.join(output_folder, 'images', split, image)}")
-                except Exception as e:
-                    print(f"Error processing {image}: {e}")
-                    continue
-
-    convert_yolo_to_predictions(
-        output_folder,
-        raw_labels_path="labels/test",
-        new_labels_dir=f"{output_folder}/converted_test_labels",
-        images_dir=f"{output_folder}/images/test"
-    )
-
-    print("Dataset creation complete.")
-
-
 def save_image_with_bounding_boxes_pillow(
         image_path, label_txt_path, output_path=None, reference_labels=None, bbox_format="yolo"
 ):
@@ -444,12 +350,10 @@ def save_image_with_bounding_boxes_pillow(
             bbox_cor = (box_center_x, box_center_y, box_width, box_height)
         x0, y0, x1, y1 = bbox_cor
 
-        # Draw the bounding box
         class_name = id_to_pii[class_id]
         color = pii_entities_colors_names[class_name]
         draw.rectangle([x0, y0, x1, y1], outline=color, width=2)
 
-    # Check for missing classes
     if reference_labels is not None:
         with open(reference_labels, "r") as ref_file:
             reference_lines = ref_file.readlines()
@@ -459,21 +363,16 @@ def save_image_with_bounding_boxes_pillow(
             if c in reference_classes:
                 reference_classes.remove(c)
         missing_classes = reference_classes
-        # Prepare the text for missing classes
         if missing_classes:
             text = "\n".join([f"Missing class: {id_to_pii[class_id]}" for class_id in missing_classes])
 
-            # Load font
             font = ImageFont.load_default(size=16)
 
-            # Calculate text size using the font
             text_width, text_height = 250, 250
 
-            # Position the text at the bottom-right corner
             text_x = img_width - text_width - 10
             text_y = img_height - text_height - 10
 
-            # Draw the text
             padding = 5
             draw.rectangle(
                 [
@@ -483,10 +382,8 @@ def save_image_with_bounding_boxes_pillow(
                 fill="white", outline="black"
             )
 
-            # Draw the text
             draw.text((text_x, text_y), text, fill="red", font=font)
 
-    # Save the modified image
     if output_path:
         img.save(output_path)
     else:

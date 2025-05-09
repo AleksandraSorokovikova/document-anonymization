@@ -1,7 +1,4 @@
 import wandb
-import random
-import numpy as np
-from PIL import Image
 import os
 from src.evaluate import count_all_layoutlm_metrics
 
@@ -9,9 +6,9 @@ from src.evaluate import count_all_layoutlm_metrics
 def init_wandb(model_name, dataset_name, params):
     run_name = f"{model_name}_{dataset_name}_{'_'.join([f'{k}{v}' for k, v in params.items()])}"
     wandb.init(
-        project="PII_Detection",  # 📌 Проект
-        name=run_name,  # Название запуска
-        group=model_name,  # 📌 Группа (по моделям)
+        project="PII_Detection",
+        name=run_name,
+        group=model_name,
         config={
             "model": model_name,
             "dataset": dataset_name,
@@ -32,7 +29,7 @@ def log_detection_metrics(
             row = [class_name] + [metric_dict[col] for col in metric_columns]
             data.append(row)
         except KeyError as e:
-            print(f"⚠️ Пропущена метрика {class_name}: отсутствует колонка {e}")
+            print(f"⚠️ Missing metric {e} for class {class_name}. Skipping this class.")
 
     table = wandb.Table(columns=["class"] + metric_columns, data=data)
     wandb.log({
@@ -54,7 +51,7 @@ def log_detection_metrics(
 
             wandb.log({f"Bboxes Comparisons {test_name}": table}, step=0)
         else:
-            print("⚠️ Не найдено изображений для логирования.")
+            print("⚠️ No images found in the specified path.")
 
 def log_lm_metrics(
         path_to_gt_benchmark_labels,

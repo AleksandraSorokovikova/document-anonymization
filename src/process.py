@@ -6,7 +6,6 @@ import numpy as np
 import math
 import os
 from PIL import Image
-from scipy.ndimage import interpolation as inter
 
 
 def create_image_view(img_with_gt_bboxes, img_with_pred_bboxes, output_path):

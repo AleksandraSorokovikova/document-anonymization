@@ -28,8 +28,6 @@ from src.prompts import (
     USER_PROMPT,
     GENERATE_LATEX_CONTENT_SYSTEM_PROMPT,
     GENERATE_LATEX_CONTENT_USER_PROMPT,
-    GENERATE_LATEX_FROM_PICTURE_AND_PII_SYSTEM_PROMPT,
-    GENERATE_LATEX_FROM_PICTURE_AND_PII_USER_PROMPT,
     DIVERSIFY_HTML_DOCUMENT_SYSTEM_PROMPT,
     DIVERSIFY_HTML_DOCUMENT_USER_PROMPT,
     DIVERSIFY_LATEX_DOCUMENT_SYSTEM_PROMPT,
@@ -199,6 +197,9 @@ class PIIGenerator:
         self.documents = []
         self.create_directories()
 
+        if not os.path.exists(f"{output_folder}/documents.json"):
+            with open(f"{output_folder}/documents.json", "w") as f:
+                json.dump([], f, indent=4)
         with open(f"{output_folder}/documents.json", "r") as f:
             self.existing_documents = json.load(f)
 
@@ -359,35 +360,17 @@ class PIIGenerator:
         random_font_family = random.choice(font_family_latex)
         document_layout = random.choice(list(latex_templates.keys()))
 
-        if not doc_img_folder_path:
-            latex_content = self.generate(
-                GENERATE_LATEX_CONTENT_SYSTEM_PROMPT("\n      - ".join(self.pii_entities)),
-                GENERATE_LATEX_CONTENT_USER_PROMPT(
-                    random_pii_values,
-                    document_subject,
-                    latex_templates[document_layout],
-                    random_font_family
-                ),
-                mes_type="latex",
-                temp=0.4,
-            )
-        else:
-            images = [img for img in os.listdir(doc_img_folder_path)]
-            images = [img for img in images if img.endswith(".jpg") and "train" in img]
-            chosen_image = random.choice(images)
-            path_to_picture = os.path.join(doc_img_folder_path, chosen_image)
-            document_layout = chosen_image.split('.jpg')[0]
-            latex_content = self.generate(
-                GENERATE_LATEX_FROM_PICTURE_AND_PII_SYSTEM_PROMPT,
-                GENERATE_LATEX_FROM_PICTURE_AND_PII_USER_PROMPT(
-                    random_pii_values,
-                    document_subject,
-                    random_font_family
-                ),
-                image_path=path_to_picture,
-                mes_type="latex",
-                temp=0.4
-            )
+        latex_content = self.generate(
+            GENERATE_LATEX_CONTENT_SYSTEM_PROMPT("\n      - ".join(self.pii_entities)),
+            GENERATE_LATEX_CONTENT_USER_PROMPT(
+                random_pii_values,
+                document_subject,
+                latex_templates[document_layout],
+                random_font_family
+            ),
+            mes_type="latex",
+            temp=0.4,
+        )
 
         if "path/to/signature.png" in latex_content:
             latex_content = latex_content.replace(
@@ -482,8 +465,6 @@ class PIIGenerator:
 
                         lines = [word[6] for word in entity_boxes]
                         blocks = [word[5] for word in entity_boxes]
-                        # if all lines are the same, then it is a single line entity
-                        # otherwise, it is a multi-line entity and it should be separated
                         if len(set(lines)) == 1 and len(set(blocks)) == 1:
                             x0 = min(box[0] for box in entity_boxes)
                             y0 = min(box[1] for box in entity_boxes)
@@ -497,7 +478,6 @@ class PIIGenerator:
                             entity_boxes = []
                             entity_index = 0
                         else:
-                            # group words by line and block
                             lines_y0 = {}
                             for box in entity_boxes:
                                 line = box[6]
@@ -508,7 +488,6 @@ class PIIGenerator:
                             lines = {line: i for i, line in enumerate(lines_y0.keys())}
                             parts = {}
                             for box in entity_boxes:
-                                # line = box[6]
                                 block = box[5]
                                 y0 = int(box[1])
                                 line = lines[y0]
@@ -540,15 +519,6 @@ class PIIGenerator:
             page = document[0]
             image = page.get_image_info()[-1]
             bbox = image["bbox"]
-
-            # page_rect = page.rect
-            # width, height = page_rect.width, page_rect.height
-            #
-            # x_min, y_min, x_max, y_max = bbox
-            # if x_max > width or y_max > height:
-            #     x_max = min(x_max, width)
-            #     y_max = min(y_max, height)
-            #     bbox = (x_min, y_min, x_max, y_max)
 
             return bbox
         except:
@@ -902,8 +872,6 @@ class PIIGenerator:
 
         bounding_boxes = self.clip_bboxes(pdf, bounding_boxes)
 
-        # FIX NONE IN SIGNATURE
-        # FIX MIDDLE NAME
         layoutlm_labels = self.generate_layoutlm_labels(pdf, random_pii_values, document_meta_info["signature"])
 
         if document_meta_info["signature"] is not None:
@@ -1005,8 +973,6 @@ class PIIGenerator:
             pdf, random_pii_values
         )
         bounding_boxes = self.clip_bboxes(pdf, bounding_boxes)
-        # FIX NONE IN SIGNATURE
-        # FIX MIDDLE NAME
         layoutlm_labels = self.generate_layoutlm_labels(pdf, random_pii_values, doc["document_meta_info"]["signature"])
 
         if doc["document_meta_info"]["signature"] is not None:
@@ -1026,7 +992,6 @@ class PIIGenerator:
 
         self.draw_bounding_boxes(pdf, bounding_boxes)
 
-        # save everything
         pdf.save(
             os.path.join(
                 output_folder,

@@ -14,6 +14,10 @@ import umap.umap_ as umap
 from collections import Counter
 from PIL import Image
 from scipy.stats import entropy
+import json
+from PIL import Image
+from collections import defaultdict
+import os
 
 
 
@@ -123,26 +127,13 @@ def plot_tsne(emb1, emb2):
     plt.show()
 
 
-# --------------------------
-# Функция для вычисления попарных расстояний
-# --------------------------
 def compute_pairwise_distances(embeddings):
-    """
-    Вычисляет попарные расстояния между эмбеддингами.
-    Возвращает:
-      - одномерный массив расстояний (верхний треугольник матрицы расстояний)
-      - полную матрицу расстояний.
-    """
     dists = pairwise_distances(embeddings)
-    # Выбираем только значения верхнего треугольника (без диагонали)
     upper_tri_indices = np.triu_indices_from(dists, k=1)
     pair_dists = dists[upper_tri_indices]
     return pair_dists, dists
 
 
-# --------------------------
-# Визуализации попарных расстояний
-# --------------------------
 def plot_histogram(pair_dists, title="Histogram of Pairwise Distances"):
     plt.figure()
     plt.hist(pair_dists, bins=50, color='blue', alpha=0.7)
@@ -172,17 +163,7 @@ def plot_cdf(pair_dists, title="CDF of Pairwise Distances"):
     plt.show()
 
 
-# --------------------------
-# Кластеризация и метрики кластеризации
-# --------------------------
 def compute_clustering_metrics(embeddings, n_clusters=5):
-    """
-    Производит кластеризацию (например, KMeans) и вычисляет:
-      - Silhouette Score,
-      - Calinski-Harabasz Score,
-      - Davies-Bouldin Score.
-    Возвращает метрики и метки кластеров.
-    """
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     labels = kmeans.fit_predict(embeddings)
     sil_score = silhouette_score(embeddings, labels)
@@ -190,10 +171,6 @@ def compute_clustering_metrics(embeddings, n_clusters=5):
     db_score = davies_bouldin_score(embeddings, labels)
     return labels, sil_score, ch_score, db_score
 
-
-# --------------------------
-# Визуализация UMAP
-# --------------------------
 def plot_umap(embeddings, labels=None, title="UMAP Projection"):
     reducer = umap.UMAP(random_state=42)
     embedding_umap = reducer.fit_transform(embeddings)
@@ -207,10 +184,6 @@ def plot_umap(embeddings, labels=None, title="UMAP Projection"):
     plt.ylabel("UMAP 2")
     plt.show()
 
-
-# --------------------------
-# Визуализация PCA
-# --------------------------
 def plot_pca(embeddings, labels=None, title="PCA Projection"):
     pca = PCA(n_components=2)
     embedding_pca = pca.fit_transform(embeddings)
@@ -225,9 +198,6 @@ def plot_pca(embeddings, labels=None, title="PCA Projection"):
     plt.show()
 
 
-# --------------------------
-# Тепловая карта матрицы расстояний
-# --------------------------
 def plot_heatmap(distance_matrix, title="Heatmap of Distance Matrix"):
     plt.figure(figsize=(6, 4))
     sns.heatmap(distance_matrix, cmap="viridis")
@@ -236,10 +206,6 @@ def plot_heatmap(distance_matrix, title="Heatmap of Distance Matrix"):
     plt.ylabel("Document index")
     plt.show()
 
-
-# --------------------------
-# Совмещённый (Joint) plot для PCA
-# --------------------------
 def plot_jointplot(embeddings, title="Joint Plot of PCA"):
     pca = PCA(n_components=2)
     embedding_pca = pca.fit_transform(embeddings)
@@ -247,17 +213,12 @@ def plot_jointplot(embeddings, title="Joint Plot of PCA"):
         'PC1': embedding_pca[:, 0],
         'PC2': embedding_pca[:, 1]
     })
-    # Используем Seaborn для создания совместного scatter plot с распределениями по осям
     joint_plot = sns.jointplot(data=df, x='PC1', y='PC2', kind='scatter', height=6, alpha=0.7)
     joint_plot.fig.suptitle(title, y=1.02)
     plt.show()
 
 
-# --------------------------
-# Функция для сравнения двух датасетов по эмбеддингам
-# --------------------------
 def compare_datasets(embeddings_synth, embeddings_real, name_1, name_2):
-    # 1. Попарные расстояния и их визуализация
     synth_pair_dists, synth_distance_matrix = compute_pairwise_distances(embeddings_synth)
     real_pair_dists, real_distance_matrix = compute_pairwise_distances(embeddings_real)
 
@@ -270,7 +231,6 @@ def compare_datasets(embeddings_synth, embeddings_real, name_1, name_2):
     plot_cdf(synth_pair_dists, title=f"{name_1}: CDF of Pairwise Distances")
     plot_cdf(real_pair_dists, title=f"{name_2}: CDF of Pairwise Distances")
 
-    # 2. Кластеризация и метрики кластеризации
     synth_labels, synth_sil, synth_ch, synth_db = compute_clustering_metrics(embeddings_synth, n_clusters=5)
     real_labels, real_sil, real_ch, real_db = compute_clustering_metrics(embeddings_real, n_clusters=5)
 
@@ -283,46 +243,30 @@ def compare_datasets(embeddings_synth, embeddings_real, name_1, name_2):
     print("Calinski-Harabasz Score: ", real_ch)
     print("Davies-Bouldin Score: ", real_db)
 
-    # 3. Визуализации проекций
     plot_umap(embeddings_synth, title=f"{name_1}: UMAP Projection")
     plot_umap(embeddings_real, title=f"{name_2}: UMAP Projection")
 
     plot_pca(embeddings_synth, title=f"{name_1}: PCA Projection")
     plot_pca(embeddings_real, title=f"{name_2}: PCA Projection")
 
-    # 4. Тепловые карты матриц расстояний
     plot_heatmap(synth_distance_matrix, title=f"{name_1}: Heatmap of Distance Matrix")
     plot_heatmap(real_distance_matrix, title=f"{name_2}: Heatmap of Distance Matrix")
 
-    # 5. Совмещённые (Joint) графики PCA
     plot_jointplot(embeddings_synth, title=f"{name_1}: Joint Plot of PCA")
     plot_jointplot(embeddings_real, title=f"{name_2}: Joint Plot of PCA")
 
 
 def aggregate_bbox_centers_scaled(bboxes):
-    """
-    Собирает нормализованные координаты центров bbox-ов для всех документов,
-    предполагая, что bbox-ы уже масштабированы под фиксированный размер (770 x 1048).
-
-    :param documents: список списков bbox-ов (в формате [x_min, y_min, x_max, y_max])
-    :return: numpy.ndarray центров в формате [x_center, y_center], нормализованных
-    """
     centers = []
     for bbox in bboxes:
         x_min, y_min, x_max, y_max = bbox
-        center_x = (x_min + x_max) / 2.0 / 770  # нормализуем по ширине
-        center_y = 1 - (y_min + y_max) / 2.0 / 1048  # нормализуем по высоте
+        center_x = (x_min + x_max) / 2.0 / 770
+        center_y = 1 - (y_min + y_max) / 2.0 / 1048
         centers.append((center_x, center_y))
     return np.array(centers)
 
 
 def plot_bbox_center_heatmap(bboxes, bins=50):
-    """
-    Строит heatmap для распределения центров bbox-ов.
-
-    :param centers: массив центров [x_center, y_center] (нормализованных)
-    :param bins: количество бинов по каждой оси
-    """
     centers = aggregate_bbox_centers_scaled(bboxes)
     heatmap, xedges, yedges = np.histogram2d(centers[:, 0], centers[:, 1],
                                              bins=bins, range=[[0, 1], [0, 1]])
@@ -336,18 +280,12 @@ def plot_bbox_center_heatmap(bboxes, bins=50):
 
 
 def plot_bbox_size_distribution_scaled(bboxes):
-    """
-    Строит гистограммы распределения нормализованных размеров bbox-ов,
-    предполагая, что bbox-ы уже масштабированы под фиксированный размер (770 x 1048).
-
-    :param documents: список списков bbox-ов (в формате [x_min, y_min, x_max, y_max])
-    """
     widths = []
     heights = []
     for bbox in bboxes:
         x_min, y_min, x_max, y_max = bbox
-        bbox_width = (x_max - x_min) / 770  # нормализуем по ширине
-        bbox_height = (y_max - y_min) / 1048  # нормализуем по высоте
+        bbox_width = (x_max - x_min) / 770
+        bbox_height = (y_max - y_min) / 1048
         widths.append(bbox_width)
         heights.append(bbox_height)
 
@@ -372,7 +310,7 @@ def plot_heatmap_all(bboxes, title):
     centers = aggregate_bbox_centers_scaled(bboxes)
 
     fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_axes([0.2, 0.2, 0.8, 0.8])  # квадратная ось внутри фигуры
+    ax = fig.add_axes([0.2, 0.2, 0.8, 0.8])
 
     sns.kdeplot(
         x=centers[:, 0],
@@ -384,20 +322,16 @@ def plot_heatmap_all(bboxes, title):
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_aspect('equal')  # зафиксировать масштаб 1:1
+    ax.set_aspect('equal')
 
     ax.set_title(title)
-    ax.set_xlabel("X-координата")
-    ax.set_ylabel("Y-координата")
+    ax.set_xlabel("X-coordinate")
+    ax.set_ylabel("Y-coordinate")
     plt.savefig(f"heatmap_{title}.png", dpi=300, bbox_inches='tight')
     plt.show()
 
 
 def compute_heatmap(bboxes, bins=10):
-    """
-    Строит 2D-гистограмму центров bbox.
-    centers: массив координат [n, 2]
-    """
     centers = aggregate_bbox_centers_scaled(bboxes)
     heatmap, xedges, yedges = np.histogram2d(centers[:, 0], centers[:, 1],
                                              bins=bins, range=[[0, 1], [0, 1]])
@@ -405,9 +339,6 @@ def compute_heatmap(bboxes, bins=10):
 
 
 def compute_heatmap_entropy(bboxes):
-    """
-    Вычисляет энтропию 2D-гистограммы (разнообразие распределения).
-    """
     centers = aggregate_bbox_centers_scaled(bboxes)
     heatmap, _, _ = compute_heatmap(bboxes)
     h = heatmap.flatten()
@@ -416,25 +347,13 @@ def compute_heatmap_entropy(bboxes):
 
 
 def compute_average_pairwise_distance(bboxes):
-    """
-    Вычисляет среднее попарное расстояние между центрами bbox.
-    """
     centers = aggregate_bbox_centers_scaled(bboxes)
     dists = pairwise_distances(centers)
-    # Берем верхний треугольник без диагонали
     upper_tri = dists[np.triu_indices_from(dists, k=1)]
     return np.mean(upper_tri)
 
 
 def calculate_coverage_ratio(bboxes, img_width=770, img_height=1048):
-    """
-    Рассчитывает Coverage Ratio (%) для одного документа.
-
-    :param bboxes: список bbox'ов в формате [x_min, y_min, x_max, y_max]
-    :param img_width: ширина изображения (по умолчанию 770)
-    :param img_height: высота изображения (по умолчанию 1048)
-    :return: Coverage Ratio (%)
-    """
     total_area = img_width * img_height
     bbox_area = 0
 
@@ -449,51 +368,11 @@ def calculate_coverage_ratio(bboxes, img_width=770, img_height=1048):
 
 
 def calculate_dataset_coverage(documents, img_width=770, img_height=1048):
-    """
-    Рассчитывает средний Coverage Ratio (%) по всему датасету.
-
-    :param documents: список документов (каждый документ — список bbox'ов)
-    :return: средний Coverage Ratio (%) по датасету
-    """
     ratios = [calculate_coverage_ratio(bbox, img_width, img_height) for bbox in documents]
     return np.mean(ratios)
 
 
-def bbox_diversity_score(bboxes, grid_size=(5, 5), img_width=770, img_height=1048):
-    """
-    Считает процент разнообразия расположения bbox-ов на странице.
-
-    :param bboxes: список bbox-ов [x_min, y_min, x_max, y_max]
-    :param grid_size: количество ячеек по ширине и высоте (по умолчанию 5×5)
-    :return: Diversity Score (%)
-    """
-    grid_w, grid_h = grid_size
-    grid = np.zeros(grid_size, dtype=int)
-
-    for bbox in bboxes:
-        x_min, y_min, x_max, y_max = bbox
-        center_x = (x_min + x_max) / 2.0
-        center_y = (y_min + y_max) / 2.0
-
-        grid_x = min(int(center_x / img_width * grid_w), grid_w - 1)
-        grid_y = min(int(center_y / img_height * grid_h), grid_h - 1)
-
-        grid[grid_y, grid_x] = 1  # отмечаем ячейку как заполненную
-
-    filled_cells = np.sum(grid)
-    total_cells = grid_w * grid_h
-
-    diversity_score = (filled_cells / total_cells) * 100
-
-    return diversity_score
-
-
-def dataset_diversity_score(documents, grid_size=(5, 5), img_width=770, img_height=1048):
-    scores = [bbox_diversity_score(bboxes, grid_size, img_width, img_height) for bboxes in documents]
-    return np.mean(scores)
-
-
-def document_grid_mask(bboxes, grid_size=(5, 5), img_width=770, img_height=1048):
+def bbox_diversity_score(bboxes, grid_size=(4, 4), img_width=770, img_height=1048):
     grid_w, grid_h = grid_size
     grid = np.zeros(grid_size, dtype=int)
 
@@ -507,10 +386,37 @@ def document_grid_mask(bboxes, grid_size=(5, 5), img_width=770, img_height=1048)
 
         grid[grid_y, grid_x] = 1
 
-    return grid.flatten()  # переводим матрицу в 1D-массив
+    filled_cells = np.sum(grid)
+    total_cells = grid_w * grid_h
+
+    diversity_score = (filled_cells / total_cells) * 100
+
+    return diversity_score
 
 
-def calculate_layout_uniqueness(documents, grid_size=(5, 5), img_width=770, img_height=1048):
+def dataset_diversity_score(documents, grid_size=(4, 4), img_width=770, img_height=1048):
+    scores = [bbox_diversity_score(bboxes, grid_size, img_width, img_height) for bboxes in documents]
+    return np.mean(scores)
+
+
+def document_grid_mask(bboxes, grid_size=(4, 4), img_width=770, img_height=1048):
+    grid_w, grid_h = grid_size
+    grid = np.zeros(grid_size, dtype=int)
+
+    for bbox in bboxes:
+        x_min, y_min, x_max, y_max = bbox
+        center_x = (x_min + x_max) / 2.0
+        center_y = (y_min + y_max) / 2.0
+
+        grid_x = min(int(center_x / img_width * grid_w), grid_w - 1)
+        grid_y = min(int(center_y / img_height * grid_h), grid_h - 1)
+
+        grid[grid_y, grid_x] = 1
+
+    return grid.flatten()
+
+
+def calculate_layout_uniqueness(documents, grid_size=(4, 4), img_width=770, img_height=1048):
     masks = [tuple(document_grid_mask(bboxes, grid_size, img_width, img_height)) for bboxes in documents]
 
     mask_counts = Counter(masks)
@@ -520,3 +426,41 @@ def calculate_layout_uniqueness(documents, grid_size=(5, 5), img_width=770, img_
     uniqueness_percentage = (unique_count / len(documents)) * 100
 
     return uniqueness_percentage
+
+
+def scale_bboxes(bbox, orig_width, orig_height, new_width=770, new_height=1048):
+    scale_x = new_width / orig_width
+    scale_y = new_height / orig_height
+
+    x_min, y_min, x_max, y_max = bbox
+    x_min_scaled = x_min * scale_x
+    x_max_scaled = x_max * scale_x
+    y_min_scaled = y_min * scale_y
+    y_max_scaled = y_max * scale_y
+
+    return [int(x_min_scaled), int(y_min_scaled), int(x_max_scaled), int(y_max_scaled)]
+
+
+def get_bboxes(labels, labels_path, images_path):
+    bboxes = []
+    doc_bboxes = []
+    pii_bboxes = []
+    doc_pii_bboxes = []
+    pii_bboxes_dict = defaultdict(list)
+    for label in labels:
+        img = Image.open(os.path.join(images_path, label.replace("json", "png")))
+        orig_width, orig_height = img.size
+        doc_bbox = []
+        doc_pii_bbox = []
+        with open(os.path.join(labels_path, label), "r") as f:
+            data = json.load(f)
+            for tag, bbox in zip(data["ner_tags"], data["bboxes"]):
+                if tag != "O":
+                    pii_bboxes.append(scale_bboxes(bbox, orig_width, orig_height))
+                    pii_bboxes_dict[tag.split("-")[1]].append(scale_bboxes(bbox, orig_width, orig_height))
+                    doc_pii_bbox.append(scale_bboxes(bbox, orig_width, orig_height))
+                bboxes.append(scale_bboxes(bbox, orig_width, orig_height))
+                doc_bbox.append(scale_bboxes(bbox, orig_width, orig_height))
+        doc_bboxes.append(doc_bbox)
+        doc_pii_bboxes.append(doc_pii_bbox)
+    return bboxes, pii_bboxes, dict(pii_bboxes_dict), doc_bboxes, doc_pii_bboxes
