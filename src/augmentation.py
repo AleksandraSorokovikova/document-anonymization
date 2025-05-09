@@ -127,13 +127,18 @@ class Augmentation:
 
     @staticmethod
     def apply_brightness_contrast(
-            image: np.ndarray, bboxes: list = None, brightness_range: tuple = (60, 100), contrast_range: tuple = (75, 150)
+            image: np.ndarray,
+            bboxes: list = None,
+            brightness_range: tuple = (-30, 30),
+            contrast_range: tuple = (-30, 30)
     ) -> (np.ndarray, list):
-        brightness = random.uniform(brightness_range[0], brightness_range[1])
-        contrast = random.uniform(contrast_range[0], contrast_range[1])
+        brightness = random.uniform(*brightness_range)
+        contrast = random.uniform(*contrast_range)
+
         image = image.astype(np.float32)
         image = image * (contrast / 127 + 1) - contrast + brightness
         image = np.clip(image, 0, 255)
+
         return image.astype(np.uint8), bboxes
 
     @staticmethod

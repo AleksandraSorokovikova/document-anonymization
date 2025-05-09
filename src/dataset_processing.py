@@ -59,7 +59,7 @@ def launch_augmentation(
         path_to_bounding_boxes,
         path_to_layoutlm_boxes,
         path_to_augmented_images,
-        num_of_images=4,
+        num_of_images=1,
         zoom_range=(1.35, 1.8)
 ):
     augmentation = Augmentation()
@@ -71,8 +71,6 @@ def launch_augmentation(
     mapping = defaultdict(list)
     all_images = []
     original_pdfs = os.listdir(path_to_original_pdfs)
-    shuffle(original_pdfs)
-    original_pdfs = original_pdfs[:100]
 
     for pdf_filename in tqdm(original_pdfs):
         if not pdf_filename.endswith(".pdf"):
