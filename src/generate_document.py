@@ -10,6 +10,9 @@ from fuzzywuzzy import fuzz
 import pdfkit
 from openai import OpenAI
 from groq import Groq
+import requests
+from PIL import Image
+from io import BytesIO
 from src.config import (
     pii_classes,
     document_types,
@@ -86,6 +89,18 @@ def generate_random_full_name(entities, n):
     return full_names
 
 
+def load_signature(url="https://i.imgur.com/dTRSeuq.png"):
+    html_headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    response = requests.get(url, headers=html_headers)
+    response.raise_for_status()
+
+    img = Image.open(BytesIO(response.content))
+    return img
+
+
 def load_new_entities(dataset_name="ai4privacy/pii-masking-200k", max_number_of_entities=1000):
     entities = defaultdict(list)
     dataset = load_dataset(dataset_name)
@@ -141,6 +156,7 @@ class PIIGenerator:
             number_of_entities=None,
             generate_new=False,
             provider="openai",
+            signatures_path=None,
     ):
         if provider == "openai":
 
@@ -176,9 +192,15 @@ class PIIGenerator:
         self.path_to_pii_values = path_to_pii_values
         self.pii_classes = pii_classes
         self.pii_entities = [pii["class"] for pii in self.pii_classes]
+        if not signatures_path:
+            img = load_signature()
+            os.makedirs(os.path.join(output_folder, "signatures"), exist_ok=True)
+            img.save(os.path.join(output_folder, "signatures", "default_signature.png"))
+            signatures_path = "signatures"
+
         self.signatures_files_paths = [
             path
-            for path in os.listdir(os.path.join(output_folder, "signatures"))
+            for path in os.listdir(os.path.join(output_folder, signatures_path))
             if path.endswith(".png")
         ]
         existing_pii_values = self.read_generated_pii_from_file(path_to_pii_values)
