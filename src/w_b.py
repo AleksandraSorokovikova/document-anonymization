@@ -33,7 +33,7 @@ def log_detection_metrics(
 
     table = wandb.Table(columns=["class"] + metric_columns, data=data)
     wandb.log({
-        f"Metrics Table {test_name}": table,  # 👈 добавили слово Table
+        f"Metrics Table {test_name}": table,
     }, step=0)
 
     if image_views_path:
