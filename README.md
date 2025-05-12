@@ -4,6 +4,109 @@
 
 **SAND** - **S**ynthetic **AN**onymized **D**ocuments - is a synthetic document **generation and evaluation pipeline** for creating realistic, layout-rich one-page documents containing personally identifiable information (PII) annotations. The repository enables researchers to **generate a large corpus of documents with fine-grained PII labels**, apply visual augmentations to simulate scanned document noise, and evaluate the performance of layout-aware models on the synthetic benchmark. Each generated document comes with token-level bounding boxes and BIO-format entity tags across **13 PII categories** (e.g. names, addresses, dates, identifiers), making the data directly compatible with LayoutLM-style models for document understanding. The codebase also includes tools to **fine-tune a LayoutLM model on the synthetic data** and evaluate it against real-world datasets, as well as baseline evaluations using zero-shot multimodal models (Pixtral) and rule-based anonymization (Microsoft Presidio).
 
+---
+
+## Quickstart
+
+This section provides step-by-step instructions to reproduce the core stages of the SAND pipeline. Each notebook corresponds to a key experiment in the paper and can be executed directly via Jupyter. All required files in `data/` and `weights/` are already included.
+
+---
+
+### 1. Synthetic Document Generation
+
+📄 `dataset_creation.ipynb`
+
+**Generates synthetic documents with token-level PII annotations**
+
+📌 Paper section: `Automatic Annotation and Output Artifacts`
+
+**To run:**
+
+1. Set your OpenAI API key as `OPENAI_API_KEY` in your environment or `.env` file.
+2. Open the notebook in Jupyter.
+3. Run all cells.
+
+**Outputs saved to:** `dataset/original/`, `layoutlm_labels/`, `entities/`, `latex/` / `html/`, `documents.json`
+
+---
+
+### 2. Visual Augmentation
+
+🖼 `augmentation.ipynb`
+
+**Adds visual distortions to mimic scanned document noise**
+
+📌 Paper section: `Visual Augmentation`
+
+**To run:**
+
+1. Open the notebook in Jupyter.
+2. Run all cells.
+
+**Outputs saved to:** `dataset/augmented/` (augmented PNGs, updated annotations, `mapping.json`)
+
+---
+
+### 3. Diversity Metrics and Heatmaps
+
+📊 `measure_datasets.ipynb`
+
+**Computes layout and visual diversity metrics across datasets**
+
+📌 Paper reference: `Table 1: Diversity metrics across three datasets`
+
+**To run:**
+
+1. Open the notebook in Jupyter.
+2. Run all cells.
+
+**Outputs:** diversity scores, category entropy, layout uniqueness metrics, heatmaps
+
+---
+
+### 4. LayoutLM Evaluation on SAND and FATURA
+
+📈 `predictions_and_metrics.ipynb`
+
+**Evaluates LayoutLM models fine-tuned on SAND and FATURA**
+
+📌 Paper sections: `Experiment 1`, `Experiment 2` (Tables 2 & 3)
+
+**To run:**
+
+1. Open the notebook in Jupyter.
+2. Select which model to evaluate (trained on SAND or FATURA).
+3. Run the relevant sections.
+
+**Outputs:** per-category metrics (Precision/Recall/F1), macro-averages, visual comparisons
+
+---
+
+### 5. Baseline Evaluation with Pixtral and Presidio
+
+🧠 `presidio.ipynb`
+
+🧠 `pixtral.ipynb`
+
+**Evaluates non-fine-tuned anonymization baselines**
+
+📌 Paper reference: `Table 4: Performance of Pixtral and Presidio on the FUNSD-PII benchmark`
+
+**To run Presidio:**
+
+1. Open the notebook in Jupyter.
+2. Run all cells (CPU execution is sufficient).
+
+**To run Pixtral (requires GPU):**
+
+1. Use a GPU-enabled environment with support for `flash-attn`.
+2. Install required libraries manually (not listed in `requirements.txt` as they cannot be installed on CPU-only systems).
+3. Open the notebook in Jupyter and run all cells.
+
+**Outputs:** detection metrics across PII categories on FUNSD-PII
+
+---
+
 ## Repository Structure
 
 The repository is organized as follows:
