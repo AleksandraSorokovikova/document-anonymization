@@ -10,6 +10,51 @@
 
 This section provides step-by-step instructions to reproduce the core stages of the SAND pipeline. Each notebook corresponds to a key experiment in the paper and can be executed directly via Jupyter. All required files in `data/` and `weights/` are already included.
 
+
+Make sure you installed all dependencies listed in `requirements.txt` before running the notebooks. The repository is designed to be run in a Jupyter Notebook environment.
+
+```bash
+pip install -r requirements.txt
+```
+
+And make sure the following **system-level tools** are installed to enable LaTeX and HTML-to-PDF rendering:
+
+### System Requirements (Non-Python)
+
+To generate and render documents from LaTeX and HTML templates, the following tools must be available on your system:
+
+* **`xelatex`** — Required for rendering LaTeX documents (comes with TeX Live or MiKTeX)
+* **WeasyPrint** — Used for converting HTML to PDF (requires Cairo, Pango, and other libraries)
+* Make sure system fonts used in HTML templates are available locally.
+
+<details>
+<summary>Installation instructions</summary>
+
+#### On Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install texlive-xetex texlive-latex-extra \
+                 libcairo2 libpango-1.0-0 libgdk-pixbuf2.0-0 \
+                 libffi-dev libxml2 libxslt1.1 libjpeg-dev zlib1g-dev
+```
+
+#### On macOS (using Homebrew):
+
+```bash
+brew install cairo pango gdk-pixbuf libffi
+```
+
+Then install WeasyPrint via pip:
+
+```bash
+pip install weasyprint
+```
+
+</details>
+
+These tools are necessary to fully reproduce the PDF rendering and annotation pipeline described in the paper.
+
 ---
 
 ### 1. Synthetic Document Generation
@@ -84,18 +129,82 @@ This section provides step-by-step instructions to reproduce the core stages of 
 
 ### 5. Baseline Evaluation with Pixtral and Presidio
 
-🧠 `presidio.ipynb`
-
-🧠 `pixtral.ipynb`
-
+🧠 [`presidio.ipynb`](https://github.com/AleksandraSorokovikova/document-anonymization/blob/main/presidio.ipynb)
+🧠 [`pixtral.ipynb`](https://github.com/AleksandraSorokovikova/document-anonymization/blob/main/pixtral.ipynb)
 **Evaluates non-fine-tuned anonymization baselines**
-
 📌 Paper reference: `Table 4: Performance of Pixtral and Presidio on the FUNSD-PII benchmark`
 
 **To run Presidio:**
 
 1. Open the notebook in Jupyter.
 2. Run all cells (CPU execution is sufficient).
+
+⚠️ **Note**: The function `ImageRedactorEngine.redact()` from the `presidio-image-redactor` library was modified to return both the redacted image and the list of bounding boxes.
+This is required to evaluate detection performance. The modified version is:
+
+<details>
+<summary>Modified redact() function</summary>
+
+<pre><code>
+    def redact(
+        self,
+        image: Image,
+        fill: Union[int, Tuple[int, int, int]] = (0, 0, 0),
+        ocr_kwargs: Optional[dict] = None,
+        ad_hoc_recognizers: Optional[List[PatternRecognizer]] = None,
+        **text_analyzer_kwargs,
+    ) -> Image:
+        """Redact method to redact the given image.
+
+        Please notice, this method duplicates the image, creates a new instance and
+        manipulate it.
+        :param image: PIL Image to be processed.
+        :param fill: colour to fill the shape - int (0-255) for
+        grayscale or Tuple(R, G, B) for RGB.
+        :param ocr_kwargs: Additional params for OCR methods.
+        :param ad_hoc_recognizers: List of PatternRecognizer objects to use
+        for ad-hoc recognizer.
+        :param text_analyzer_kwargs: Additional values for the analyze method
+        in AnalyzerEngine.
+
+        :return: the redacted image
+        """
+
+        image = ImageChops.duplicate(image)
+
+        # Check the ad-hoc recognizers list
+        self._check_ad_hoc_recognizer_list(ad_hoc_recognizers)
+
+        # Detect PII
+        if ad_hoc_recognizers is None:
+            bboxes = self.image_analyzer_engine.analyze(
+                image,
+                ocr_kwargs=ocr_kwargs,
+                **text_analyzer_kwargs,
+            )
+        else:
+            bboxes = self.image_analyzer_engine.analyze(
+                image,
+                ocr_kwargs=ocr_kwargs,
+                ad_hoc_recognizers=ad_hoc_recognizers,
+                **text_analyzer_kwargs,
+            )
+
+        draw = ImageDraw.Draw(image)
+
+        for box in bboxes:
+            x0 = box.left
+            y0 = box.top
+            x1 = x0 + box.width
+            y1 = y0 + box.height
+            draw.rectangle([x0, y0, x1, y1], fill=fill)
+
+        return image, bboxes
+</code></pre>
+
+</details>
+
+If you are using the original version of `presidio`, make sure to apply the patch shown in the notebook or replace the `redact` method manually.
 
 **To run Pixtral (requires GPU):**
 
