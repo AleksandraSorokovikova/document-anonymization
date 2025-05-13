@@ -10,6 +10,7 @@
 
 This section provides step-by-step instructions to reproduce the core stages of the SAND pipeline. Each notebook corresponds to a key experiment in the paper and can be executed directly via Jupyter. All required files in `data/` and `weights/` are already included.
 
+### Prerequisites
 
 Make sure you installed all dependencies listed in `requirements.txt` before running the notebooks. The repository is designed to be run in a Jupyter Notebook environment.
 
@@ -54,6 +55,56 @@ pip install weasyprint
 </details>
 
 These tools are necessary to fully reproduce the PDF rendering and annotation pipeline described in the paper.
+
+---
+
+### 📦 Downloading Supplementary Data
+
+⚠️ **Required for reproducing results and running code**
+
+📁 This step downloads the `weights/` and `data/` folders used in evaluation, and diversity analysis.
+
+You have two options:
+
+---
+
+#### ✅ Option 1: Download and unpack manually
+
+1. Download the archive containing both folders from the following link (provided in the `README.md`):
+
+   > 🔗 **[Download resources.zip](https://drive.google.com/uc?export=download&id=1y3GlIlGxmkJr2z8_EM_q5Mf0cB8Cnv2F)**
+
+2. Unzip the archive. It will contain:
+
+   ```
+   supplementary_material.zip
+   └── weights/
+   └── data/
+   ```
+
+3. Move both folders (`weights/`, `data/`) to the **root directory of the repository** — the same location where the Jupyter notebooks are located.
+
+---
+
+#### ⚙️ Option 2: Use the automatic script
+
+You can also use the provided script to download and set everything up automatically:
+
+```bash
+pip install gdown
+python download_resources.py
+```
+
+This script will:
+
+* Download the ZIP archive from Google Drive
+* Unpack it
+* Move the folders `weights/` and `data/` to the root directory
+* Clean up any temporary files
+
+💡 You can customize the target location by editing `download_resources.py`.
+
+❗️**Don't skip this step — without these folders, the notebooks will not run properly.**
 
 ---
 
@@ -129,8 +180,8 @@ These tools are necessary to fully reproduce the PDF rendering and annotation pi
 
 ### 5. Baseline Evaluation with Pixtral and Presidio
 
-🧠 [`presidio.ipynb`](https://github.com/AleksandraSorokovikova/document-anonymization/blob/main/presidio.ipynb)
-🧠 [`pixtral.ipynb`](https://github.com/AleksandraSorokovikova/document-anonymization/blob/main/pixtral.ipynb)
+🧠 `presidio.ipynb`
+🧠 `pixtral.ipynb`
 **Evaluates non-fine-tuned anonymization baselines**
 📌 Paper reference: `Table 4: Performance of Pixtral and Presidio on the FUNSD-PII benchmark`
 
