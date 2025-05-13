@@ -906,7 +906,17 @@ class PIIGenerator:
                     ("signature", document_meta_info["signature"], signature_bbox)
                 )
 
-        self.draw_bounding_boxes(pdf, bounding_boxes)
+        layoutlm_bounding_boxes = []
+        for token, bbox, tag in zip(layoutlm_labels["tokens"], layoutlm_labels["bboxes"], layoutlm_labels["ner_tags"]):
+            if tag != "O":
+                layoutlm_bounding_boxes.append([
+                    tag.replace("B-", "").replace("I-", ""),
+                    token,
+                    bbox,
+                ])
+
+        self.draw_bounding_boxes(pdf, layoutlm_bounding_boxes)
+
         pdf.save(
             os.path.join(
                 self.output_folder,
