@@ -219,13 +219,18 @@ def delete_dates(labels):
 def split_layoutlm_dataset(
         path_to_folder,
         output_path,
-        train_val_ratio=0.9,
-        val_test_ratio=0.8,
-        new_ner_tags=None
+        doc_path,
+        new_ner_tags=None,
 ):
     images_dir = os.path.join(path_to_folder, "images")
     labels_dir = os.path.join(path_to_folder, "layoutlm_labels")
     unique_labels = set()
+
+    with open(doc_path, "r") as f:
+        documents = json.load(f)
+    documents = {
+        doc["file_name"].replace(".pdf", ""): doc for doc in documents
+    }
 
     ner_classes = layoutlm_ner_classes
     if new_ner_tags:
@@ -242,9 +247,11 @@ def split_layoutlm_dataset(
 
     image_files = sorted([f for f in os.listdir(images_dir) if f.endswith(".png")])
     json_files = sorted([f for f in os.listdir(labels_dir) if f.endswith(".json")])
-    assert len(image_files) == len(json_files), "Количество изображений и меток не совпадает"
+    assert len(image_files) == len(json_files), "Number of images and labels do not match"
 
-    data = []
+    train_data = []
+    val_data = []
+    test_data = []
     for img_file, json_file in zip(image_files, json_files):
         img_path = os.path.join(images_dir, img_file)
         json_path = os.path.join(labels_dir, json_file)
@@ -259,26 +266,36 @@ def split_layoutlm_dataset(
         unique_labels.update(label_data["ner_tags"])
 
         assert len(label_data["tokens"]) == len(label_data["bboxes"]) == len(label_data["ner_tags"]), \
-            f"Длины токенов, ббоксов и меток не совпадают для {img_file}"
+            f"Lenghth mismatch in {img_file}: "
 
-        assert "B-signature" not in label_data["ner_tags"], f"Подпись присутствует в {img_file}"
+        assert "B-signature" not in label_data["ner_tags"], f"Signature found in {img_file}"
 
-        data.append({
-            "id": img_file.replace(".png", ""),
-            "tokens": label_data["tokens"],
-            "bboxes": label_data["bboxes"],
-            "ner_tags": label_data["ner_tags"],
-            "image": img_path,
-        })
+        file_id = "_".join(img_file.split("_")[:-1])
+        if documents[file_id]["split"] == "train":
+            train_data.append({
+                "id": img_file.replace(".png", ""),
+                "tokens": label_data["tokens"],
+                "bboxes": label_data["bboxes"],
+                "ner_tags": label_data["ner_tags"],
+                "image": img_path,
+            })
+        elif documents[file_id]["split"] == "val":
+            val_data.append({
+                "id": img_file.replace(".png", ""),
+                "tokens": label_data["tokens"],
+                "bboxes": label_data["bboxes"],
+                "ner_tags": label_data["ner_tags"],
+                "image": img_path,
+            })
+        else:
+            test_data.append({
+                "id": img_file.replace(".png", ""),
+                "tokens": label_data["tokens"],
+                "bboxes": label_data["bboxes"],
+                "ner_tags": label_data["ner_tags"],
+                "image": img_path,
+            })
 
-    random.shuffle(data)
-
-    train_size = int(train_val_ratio * len(data))
-    val_size = int((1-train_val_ratio) * val_test_ratio * len(data))
-
-    train_data = data[:train_size]
-    val_data = data[train_size:train_size + val_size]
-    test_data = data[train_size + val_size:]
     print(f"Test size: {len(test_data)}")
 
     dataset = DatasetDict({

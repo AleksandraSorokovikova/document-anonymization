@@ -72,7 +72,7 @@ You have two options:
 
 1. Download the archive containing both folders from the following link (provided in the `README.md`):
 
-   > 🔗 **[Download resources.zip](https://drive.google.com/uc?export=download&id=1y3GlIlGxmkJr2z8_EM_q5Mf0cB8Cnv2F)**
+   > 🔗 **[Download resources.zip](https://drive.google.com/uc?export=download&id=1Ht6PHCGK8U1U3hINlDo2AmQGtPVYC69U)**
 
 2. Unzip the archive. It will contain:
 

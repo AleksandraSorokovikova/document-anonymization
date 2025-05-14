@@ -10,6 +10,13 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from src.config import pii_entities_colors_names, id_to_pii
+import random
+
+
+def set_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def get_label_list(labels):
@@ -268,7 +275,10 @@ def prepare_trainer(
         per_device_train_batch_size=4,
         new_labels=None,
         layers_to_train=[10, 11],
+        seed=42,
 ):
+    set_seed(seed)
+
     metric = load("seqeval")
 
     label_list = None
@@ -316,6 +326,7 @@ def prepare_trainer(
         save_strategy='epoch',
         load_best_model_at_end=True,
         metric_for_best_model=metric_for_best_model,
+        seed=seed,
     )
 
     trainer = Trainer(

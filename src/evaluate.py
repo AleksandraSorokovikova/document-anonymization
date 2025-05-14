@@ -5,6 +5,7 @@ import numpy as np
 import json
 from collections import defaultdict
 from PIL import Image
+import pandas as pd
 from src.dataset_processing import return_image_with_bounding_boxes
 
 
@@ -26,7 +27,7 @@ def iou(boxA, boxB):
     return interArea / unionArea
 
 
-def match_predictions_to_ground_truths(predictions, ground_truths, iou_threshold=0.5):
+def match_predictions_to_ground_truths(predictions, ground_truths, iou_threshold=0.7):
     matched_gt = set()
 
     TP = 0
@@ -53,7 +54,7 @@ def match_predictions_to_ground_truths(predictions, ground_truths, iou_threshold
     return TP, FP, FN
 
 
-def compute_detection_metrics_single_threshold(all_predictions, all_ground_truths, iou_threshold=0.5):
+def compute_detection_metrics_single_threshold(all_predictions, all_ground_truths, iou_threshold=0.7):
     preds_by_class = defaultdict(list)
     gts_by_class = defaultdict(list)
 
@@ -125,7 +126,7 @@ def evaluate_all_labels(
         ground_truth_labels_dir: str,
         prediction_labels_dir: str,
         images_dir: str,
-        iou_threshold: float = 0.5,
+        iou_threshold: float = 0.7,
         create_image_views = False,
         image_views_dir = None
 ):
@@ -283,6 +284,26 @@ def extract_token_entities(doc, entities_to_exclude=None):
     return entities
 
 
+def count_std(file_paths):
+    dfs = [pd.read_csv(path).set_index('class') for path in file_paths]
+
+    metrics = ['precision', 'recall']
+    std_df = pd.DataFrame(index=dfs[0].index)
+
+    for metric in metrics:
+        metric_values = pd.concat(
+            [df[metric].rename(f'model_{i + 1}') for i, df in enumerate(dfs)],
+            axis=1
+        )
+        std_df[f'{metric}_std'] = metric_values.std(axis=1)
+
+    std_df = std_df.reset_index()
+    std_df['precision_std'] = std_df['precision_std'] * 100
+    std_df['recall_std'] = std_df['recall_std'] * 100
+
+    print(std_df[['class', 'precision_std', 'recall_std']])
+
+
 def calculate_layoutlm_metrics_single(gt_doc, pred_doc, coverage_threshold=0.7):
     gt_entities = extract_token_entities(gt_doc)
     pred_entities = extract_token_entities(pred_doc)
@@ -340,7 +361,7 @@ def calculate_layoutlm_metrics_single(gt_doc, pred_doc, coverage_threshold=0.7):
     return metrics
 
 
-def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5):
+def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.7):
     all_gt = []
     all_pred = []
     for gt_doc, pred_doc in zip(list_gt_docs, list_pred_docs):
@@ -416,7 +437,7 @@ def calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_thre
     return metrics
 
 
-def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.5, entities_to_exclude=None):
+def calculate_overall_metrics_single(gt_doc, pred_doc, coverage_threshold=0.7, entities_to_exclude=None):
 
     gt_entities = extract_token_entities(gt_doc, entities_to_exclude=entities_to_exclude)
     pred_entities = extract_token_entities(pred_doc, entities_to_exclude=entities_to_exclude)
@@ -497,8 +518,8 @@ def count_all_layoutlm_metrics(path_to_gt: str, labels_folder: str, class_names:
             gt = json.load(f)
             list_gt_docs.append(gt)
 
-        metrics_single = calculate_layoutlm_metrics_single(gt, predictions, coverage_threshold=0.5)
-        overall_metrics_single = calculate_overall_metrics_single(gt, predictions, coverage_threshold=0.5)
+        metrics_single = calculate_layoutlm_metrics_single(gt, predictions, coverage_threshold=0.7)
+        overall_metrics_single = calculate_overall_metrics_single(gt, predictions, coverage_threshold=0.7)
         predictions_dict[pred] = metrics_single
 
         for cat in metrics_single:
@@ -533,7 +554,7 @@ def count_all_layoutlm_metrics(path_to_gt: str, labels_folder: str, class_names:
     overall_metrics["recall"] /= overall_tp_count
     overall_metrics["f1"] = 2 * overall_metrics["precision"] * overall_metrics["recall"] / (overall_metrics["precision"] + overall_metrics["recall"])
 
-    metrics_batch = calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.5)
+    metrics_batch = calculate_layoutlm_metrics_batch(list_gt_docs, list_pred_docs, coverage_threshold=0.7)
 
     for cat in list(metrics_batch.keys()):
         if cat not in metrics:

@@ -4,7 +4,7 @@ import gdown
 import shutil
 
 # ==== CONFIGURATION ====
-FILE_ID = "1y3GlIlGxmkJr2z8_EM_q5Mf0cB8Cnv2F"
+FILE_ID = "1Ht6PHCGK8U1U3hINlDo2AmQGtPVYC69U"
 FOLDER_NAME = "supplementary_material"
 ZIP_NAME = f"{FOLDER_NAME}.zip"
 DOWNLOAD_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
